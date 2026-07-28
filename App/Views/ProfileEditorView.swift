@@ -18,6 +18,7 @@ struct ProfileEditorView: View {
 
     @State private var validationMessage: String?
     @State private var argumentsText: String = ""
+    @State private var lastSyncedRunnerID: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -25,7 +26,7 @@ struct ProfileEditorView: View {
                 Section("Identity") {
                     TextField("Name", text: $draft.name)
                     TextField("Runner ID", text: $draft.runnerID)
-                        .onChange(of: draft.runnerID) { _ in
+                        .onChange(of: draft.runnerID) { _, _ in
                             syncDefaultArgumentsIfUnmodified()
                         }
                     Text("Amp identifies a runner by host plus working directory. The runner ID labels it for you and is passed through as --runner-id.")
@@ -60,7 +61,7 @@ struct ProfileEditorView: View {
                     TextEditor(text: $argumentsText)
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 72)
-                        .onChange(of: argumentsText) { newValue in
+                        .onChange(of: argumentsText) { _, newValue in
                             draft.arguments = Self.parseArguments(newValue)
                         }
                     HStack {
@@ -69,8 +70,10 @@ struct ProfileEditorView: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Reset to Default") {
-                            draft.arguments = RunnerProfile.defaultArguments(runnerID: draft.runnerID)
+                            let runnerID = draft.runnerID.trimmingCharacters(in: .whitespacesAndNewlines)
+                            draft.arguments = RunnerProfile.defaultArguments(runnerID: runnerID)
                             argumentsText = Self.formatArguments(draft.arguments)
+                            lastSyncedRunnerID = runnerID
                         }
                         .buttonStyle(.link)
                     }
@@ -115,6 +118,7 @@ struct ProfileEditorView: View {
         .frame(minWidth: 520, minHeight: 560)
         .onAppear {
             argumentsText = Self.formatArguments(draft.arguments)
+            lastSyncedRunnerID = draft.runnerID.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -171,10 +175,13 @@ struct ProfileEditorView: View {
     /// Keeps `--runner-id <id>` in step while the user is still using the default
     /// argument list, and leaves hand-edited lists alone.
     private func syncDefaultArgumentsIfUnmodified() {
-        let currentIDIndex = draft.arguments.firstIndex(of: "--runner-id")
-        guard let currentIDIndex, currentIDIndex + 1 < draft.arguments.count else { return }
-        draft.arguments[currentIDIndex + 1] = draft.runnerID
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRunnerID = draft.runnerID.trimmingCharacters(in: .whitespacesAndNewlines)
+        defer { lastSyncedRunnerID = trimmedRunnerID }
+
+        let previousDefaultArguments = RunnerProfile.defaultArguments(runnerID: lastSyncedRunnerID)
+        guard draft.arguments == previousDefaultArguments else { return }
+
+        draft.arguments = RunnerProfile.defaultArguments(runnerID: trimmedRunnerID)
         argumentsText = Self.formatArguments(draft.arguments)
     }
 

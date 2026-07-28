@@ -21,12 +21,13 @@ struct AmpRunnerApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        // The profile list, editor, and log viewer live in a `Settings` scene rather
-        // than a `WindowGroup`: for an LSUIElement app this is the scene type that can
-        // be brought forward on demand without ever adding a Dock icon.
-        Settings {
+        // The profile list, editor, and log viewer live in an explicitly addressable
+        // window so menu-bar actions can open it directly with SwiftUI's openWindow
+        // action. LSUIElement keeps the app out of the Dock.
+        Window("Amp Runner", id: SettingsWindowOpener.windowID) {
             SettingsRootView(coordinator: appDelegate.coordinator)
         }
+        .windowResizability(.contentSize)
     }
 }
 

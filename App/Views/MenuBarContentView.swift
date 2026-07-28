@@ -10,18 +10,10 @@ enum SettingsPane: Hashable {
 
 /// Opens the app's single `Settings` scene from AppKit.
 ///
-/// A `Settings` scene is used rather than a `Window`/`WindowGroup` because it is the one
-/// scene type that never contributes a Dock icon or a menu-bar app menu for an
-/// `LSUIElement` app, which is exactly what a menu-bar-only app wants.
+/// The window is declared in `AmpRunnerApp` with the same id, and opened from the menu
+/// using SwiftUI's `openWindow` environment action.
 enum SettingsWindowOpener {
-    static func open() {
-        activateApp()
-        // macOS 13+ selector. The macOS 12 name is kept as a fallback so the call still
-        // works if the app is ever back-deployed.
-        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
-    }
+    static let windowID = "profile-manager"
 
     static func activateApp() {
         if #available(macOS 14.0, *) {
@@ -37,6 +29,8 @@ struct MenuBarContentView: View {
     @ObservedObject var coordinator: RunnerCoordinator
     @ObservedObject var launchAtLogin: LaunchAtLoginManager
     @ObservedObject var notifier: RunnerNotifier
+
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         if coordinator.ampSettingsResult.needsAttention && !coordinator.isAmpSettingsWarningDismissed {
@@ -157,7 +151,8 @@ struct MenuBarContentView: View {
     private func open(_ pane: SettingsPane, draft: ProfileDraftRequest) {
         coordinator.settingsPane = pane
         coordinator.draftRequest = draft
-        SettingsWindowOpener.open()
+        openWindow(id: SettingsWindowOpener.windowID)
+        SettingsWindowOpener.activateApp()
     }
 
     private var launchAtLoginBinding: Binding<Bool> {
