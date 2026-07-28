@@ -1,0 +1,21 @@
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode — the project is generated from project.yml by XcodeGen, never committed.
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Build products / distribution artifacts
+build/
+*.dSYM/
+*.app
+*.dmg
+*.zip
+
+# macOS
+.DS_Store
