@@ -3,7 +3,7 @@ name: AmpRunner
 options:
   bundleIdPrefix: com.riyex
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "14.6"
   createIntermediateGroups: true
   generateEmptyDirectories: false
 

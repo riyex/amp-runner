@@ -13,7 +13,7 @@ it runs so you can reproduce it in a terminal.
 
 ## Prerequisites
 
-- **macOS 13 (Ventura) or later.**
+- **macOS 14 (Ventura) or later.**
 - **Xcode 15 or later**, for building the app.
 - **XcodeGen**, which generates the Xcode project from `project.yml`:
   ```sh
