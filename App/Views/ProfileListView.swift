@@ -76,7 +76,7 @@ struct ProfileListView: View {
             Text("This removes the profile from Amp Runner. Nothing in the working directory is touched.")
         }
         .onAppear { consumeDraftRequest() }
-        .onChange(of: coordinator.draftRequest) { _ in consumeDraftRequest() }
+        .onChange(of: coordinator.draftRequest) { consumeDraftRequest() }
     }
 
     // MARK: - Pieces

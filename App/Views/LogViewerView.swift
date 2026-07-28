@@ -83,7 +83,7 @@ struct LogViewerView: View {
                     .padding(6)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .onChange(of: lines.count) { count in
+                .onChange(of: lines.count) { _, count in
                     guard count > 0 else { return }
                     proxy.scrollTo(count - 1, anchor: .bottom)
                 }
