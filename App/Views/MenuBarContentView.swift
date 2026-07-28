@@ -67,7 +67,7 @@ struct MenuBarContentView: View {
         Divider()
 
         Button("Manage Profiles…") { open(.profiles, draft: .none) }
-        Button("Check Amp Settings") { coordinator.checkAmpSettings() }
+        Button("Check Amp Settings") { checkAmpSettings() }
 
         Toggle("Start Amp Runner at Login", isOn: launchAtLoginBinding)
         Toggle("Notify on Thread Start / Finish / Failure", isOn: $notifier.isEnabled)
@@ -153,6 +153,17 @@ struct MenuBarContentView: View {
         coordinator.draftRequest = draft
         openWindow(id: SettingsWindowOpener.windowID)
         SettingsWindowOpener.activateApp()
+    }
+
+    private func checkAmpSettings() {
+        let result = coordinator.checkAmpSettings()
+        let alert = NSAlert()
+        alert.messageText = "Amp Settings"
+        alert.informativeText = result.userFacingMessage
+        alert.alertStyle = result.needsAttention ? .warning : .informational
+        alert.addButton(withTitle: "OK")
+        SettingsWindowOpener.activateApp()
+        alert.runModal()
     }
 
     private var launchAtLoginBinding: Binding<Bool> {

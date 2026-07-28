@@ -286,9 +286,15 @@ final class RunnerCoordinator: ObservableObject {
         AmpSettingsChecker.defaultSettingsURL(homeDirectoryPath: homeDirectoryPath)
     }
 
-    func checkAmpSettings() {
+    @discardableResult
+    func checkAmpSettings() -> AmpSettingsChecker.Result {
         let data = try? Data(contentsOf: ampSettingsURL)
-        ampSettingsResult = AmpSettingsChecker.check(settingsData: data)
+        let result = AmpSettingsChecker.check(settingsData: data)
+        ampSettingsResult = result
+        if result.needsAttention {
+            isAmpSettingsWarningDismissed = false
+        }
+        return result
     }
 
     /// Rewrites `~/.config/amp/settings.json` with remote thread creation enabled,
