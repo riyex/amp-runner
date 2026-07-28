@@ -53,18 +53,23 @@ final class RunnerCoordinator: ObservableObject {
     init(
         homeDirectoryPath: String = FileManager.default.homeDirectoryForCurrentUser.path,
         store: RunnerProfileStore? = nil,
-        notifier: RunnerNotifier = RunnerNotifier(),
-        launchAtLogin: LaunchAtLoginManager = LaunchAtLoginManager(),
-        bookmarks: SecurityScopedBookmarkStore = SecurityScopedBookmarkStore()
+        notifier: RunnerNotifier? = nil,
+        launchAtLogin: LaunchAtLoginManager? = nil,
+        bookmarks: SecurityScopedBookmarkStore? = nil
     ) {
+        // Defaults are constructed here, inside the (already @MainActor) initializer body,
+        // rather than as parameter default-value expressions. `RunnerNotifier`,
+        // `LaunchAtLoginManager`, and `SecurityScopedBookmarkStore` are themselves
+        // @MainActor, and default-value expressions evaluate in a nonisolated context,
+        // so constructing them as defaults would be an actor-isolation error.
         self.homeDirectoryPath = homeDirectoryPath
         self.store = store ?? RunnerProfileStore(
             fileURL: RunnerProfileStore.defaultFileURL(homeDirectoryPath: homeDirectoryPath),
             io: FileManagerProfileStoreIO()
         )
-        self.notifier = notifier
-        self.launchAtLogin = launchAtLogin
-        self.bookmarks = bookmarks
+        self.notifier = notifier ?? RunnerNotifier()
+        self.launchAtLogin = launchAtLogin ?? LaunchAtLoginManager()
+        self.bookmarks = bookmarks ?? SecurityScopedBookmarkStore()
     }
 
     // MARK: - Launch
