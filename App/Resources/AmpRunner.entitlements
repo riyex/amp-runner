@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Developer ID / direct-distribution variant. THIS IS THE PRIMARY TARGET.
+
+  There is deliberately no `com.apple.security.app-sandbox` key here. Amp Runner's whole
+  purpose is to launch the user's own `amp` binary exactly as their shell would, so that
+  amp and everything it spawns (git, ssh, node, MCP servers) keep their normal access to
+  ~/.ssh, ~/.config/amp, ~/.gitconfig, and Homebrew paths. Sandboxing the supervisor
+  sandboxes all of those children too. See ARCHITECTURE.md.
+
+  Hardened Runtime is enabled through the build setting ENABLE_HARDENED_RUNTIME (see
+  project.yml), not through this file. No Hardened Runtime exceptions are needed: Amp
+  Runner does not JIT, does not load unsigned plug-ins, and does not disable library
+  validation — it only spawns a separate, independently signed process.
+
+  The dictionary is intentionally empty.
+-->
+<plist version="1.0">
+<dict/>
+</plist>

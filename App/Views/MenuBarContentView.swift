@@ -1,0 +1,178 @@
+import SwiftUI
+import AppKit
+import AmpRunnerCore
+
+/// Which pane the Settings window should show when it is next opened from the menu.
+enum SettingsPane: Hashable {
+    case profiles
+    case logs
+}
+
+/// Opens the app's single `Settings` scene from AppKit.
+///
+/// A `Settings` scene is used rather than a `Window`/`WindowGroup` because it is the one
+/// scene type that never contributes a Dock icon or a menu-bar app menu for an
+/// `LSUIElement` app, which is exactly what a menu-bar-only app wants.
+enum SettingsWindowOpener {
+    static func open() {
+        activateApp()
+        // macOS 13+ selector. The macOS 12 name is kept as a fallback so the call still
+        // works if the app is ever back-deployed.
+        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+    }
+
+    static func activateApp() {
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+}
+
+/// Contents of the menu bar dropdown.
+struct MenuBarContentView: View {
+    @ObservedObject var coordinator: RunnerCoordinator
+    @ObservedObject var launchAtLogin: LaunchAtLoginManager
+    @ObservedObject var notifier: RunnerNotifier
+
+    var body: some View {
+        if coordinator.ampSettingsResult.needsAttention && !coordinator.isAmpSettingsWarningDismissed {
+            Text(coordinator.ampSettingsResult.userFacingMessage)
+            if canAutoEnableRemoteThreadCreation {
+                Button("Enable Remote Thread Creation") {
+                    coordinator.enableRemoteThreadCreation()
+                }
+            }
+            Button("Dismiss Warning") {
+                coordinator.isAmpSettingsWarningDismissed = true
+            }
+            Divider()
+        }
+
+        if let loadError = coordinator.loadError {
+            Text(loadError)
+            Divider()
+        }
+
+        if coordinator.profiles.isEmpty {
+            Text("No runner profiles yet")
+            Button("Quick Start: Create “SampleProject” Profile…") { open(.profiles, draft: .sampleProject) }
+            Button("New Profile…") { open(.profiles, draft: .new) }
+        } else {
+            ForEach(coordinator.profiles) { profile in
+                profileMenu(for: profile)
+            }
+            Divider()
+            Button("Stop All Runners") { coordinator.stopAll() }
+                .disabled(!coordinator.profiles.contains { coordinator.status(for: $0).isRunning })
+        }
+
+        Divider()
+
+        Button("Manage Profiles…") { open(.profiles, draft: .none) }
+        Button("Check Amp Settings") { coordinator.checkAmpSettings() }
+
+        Toggle("Start Amp Runner at Login", isOn: launchAtLoginBinding)
+        Toggle("Notify on Thread Start / Finish / Failure", isOn: $notifier.isEnabled)
+
+        if launchAtLogin.requiresApproval {
+            Text("Login item needs approval in System Settings › General › Login Items")
+        }
+
+        Divider()
+
+        Button("Quit Amp Runner") {
+            coordinator.onTerminate()
+            NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q")
+    }
+
+    // MARK: - Per-profile submenu
+
+    @ViewBuilder
+    private func profileMenu(for profile: RunnerProfile) -> some View {
+        let status = coordinator.status(for: profile)
+
+        Menu("\(statusGlyph(status))  \(profile.name) — \(status.detailedDescription)") {
+            if status.isRunning {
+                Button("Stop") { coordinator.stop(profile) }
+                Button("Restart") { coordinator.restart(profile) }
+            } else {
+                Button("Start") { startFromMenu(profile) }
+            }
+
+            Divider()
+
+            Button("Open Folder in Finder") { coordinator.revealWorkingDirectoryInFinder(profile) }
+            Button("Open Folder in Terminal") { coordinator.openWorkingDirectoryInTerminal(profile) }
+            Button("Open on ampcode.com") { coordinator.openOnAmpCode(profile) }
+
+            Divider()
+
+            Button("View Logs…") {
+                coordinator.logViewerProfileID = profile.id
+                open(.logs, draft: .none)
+            }
+            Button("Copy Recent Logs") {
+                coordinator.copyToPasteboard(coordinator.logLines(for: profile.id).joined(separator: "\n"))
+            }
+            Button("Copy Command") {
+                coordinator.copyToPasteboard(coordinator.commandPreview(for: profile))
+            }
+
+            Divider()
+
+            Button("Edit…") { open(.profiles, draft: .edit(profile.id)) }
+            Button("Duplicate…") { open(.profiles, draft: .duplicate(profile.id)) }
+        }
+    }
+
+    /// Plain-text glyphs rather than SF Symbols: items inside a menu-styled
+    /// `MenuBarExtra` are rendered as `NSMenuItem`s and only reliably show their title.
+    private func statusGlyph(_ status: RunnerStatus) -> String {
+        switch status {
+        case .stopped: return "○"
+        case .starting: return "◐"
+        case .online: return "●"
+        case .working: return "◆"
+        case .error: return "▲"
+        }
+    }
+
+    // MARK: - Actions
+
+    /// A menu item cannot host a sheet, so a start that needs confirmation brings the
+    /// Settings window forward and presents the confirmation sheet there.
+    private func startFromMenu(_ profile: RunnerProfile) {
+        coordinator.requestStart(profile)
+        if coordinator.pendingConfirmation != nil {
+            open(.profiles, draft: .none)
+        }
+    }
+
+    private func open(_ pane: SettingsPane, draft: ProfileDraftRequest) {
+        coordinator.settingsPane = pane
+        coordinator.draftRequest = draft
+        SettingsWindowOpener.open()
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLogin.isEnabled },
+            set: { _ = launchAtLogin.setEnabled($0) }
+        )
+    }
+
+    /// Only offer one-click enabling when the file could actually be parsed. A malformed
+    /// `settings.json` must be fixed by hand rather than clobbered.
+    private var canAutoEnableRemoteThreadCreation: Bool {
+        switch coordinator.ampSettingsResult {
+        case .disabled, .notConfigured, .missingFile: return true
+        case .enabled, .malformed: return false
+        }
+    }
+}

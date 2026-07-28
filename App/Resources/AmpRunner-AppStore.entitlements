@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Mac App Store variant. NOT the recommended distribution channel — see ARCHITECTURE.md.
+
+  Under this entitlement set the spawned `amp` process inherits the app's sandbox, so it
+  (and its own children: git, ssh, node, MCP servers) can only reach the app container
+  and the folder the user explicitly granted. In practice that means ~/.ssh,
+  ~/.gitconfig, ~/.config/amp and Homebrew-installed binaries are unreachable, which
+  defeats the tool's purpose for most users. This variant is kept only for the narrow
+  case of a single, fully self-contained working directory.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+</dict>
+</plist>
