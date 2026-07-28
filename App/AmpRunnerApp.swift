@@ -75,16 +75,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// sheet.
 struct SettingsRootView: View {
     @ObservedObject var coordinator: RunnerCoordinator
+    @State private var selectedPane: SettingsPane
 
-    private var paneBinding: Binding<SettingsPane> {
-        Binding(
-            get: { coordinator.settingsPane },
-            set: { coordinator.settingsPane = $0 }
-        )
+    init(coordinator: RunnerCoordinator) {
+        self.coordinator = coordinator
+        _selectedPane = State(initialValue: coordinator.settingsPane)
     }
 
     var body: some View {
-        TabView(selection: paneBinding) {
+        TabView(selection: $selectedPane) {
             ProfileListView(coordinator: coordinator)
                 .tabItem { Label("Profiles", systemImage: "list.bullet") }
                 .tag(SettingsPane.profiles)
@@ -101,6 +100,9 @@ struct SettingsRootView: View {
                 onStart: { remember in coordinator.confirmPendingStart(rememberChoice: remember) },
                 onCancel: { coordinator.cancelPendingStart() }
             )
+        }
+        .task(id: coordinator.settingsPane) {
+            selectedPane = coordinator.settingsPane
         }
         .onAppear { coordinator.launchAtLogin.refresh() }
     }
