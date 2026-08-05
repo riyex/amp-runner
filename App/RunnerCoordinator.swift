@@ -369,7 +369,7 @@ final class RunnerCoordinator: ObservableObject {
         pasteboard.setString(text, forType: .string)
     }
 
-    /// Live preview shown in the editor and the confirmation sheet.
+    /// Terminal equivalent shown in the editor and copied from the menu.
     func commandPreview(for profile: RunnerProfile) -> String {
         RunnerCommandBuilder.commandPreview(for: profile, homeDirectoryPath: homeDirectoryPath)
     }

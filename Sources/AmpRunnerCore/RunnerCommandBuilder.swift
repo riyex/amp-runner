@@ -1,7 +1,7 @@
 import Foundation
 
-/// The Amp command for a profile, after tilde expansion and path normalisation. This is
-/// what the confirmation sheet displays and what the native monitor helper launches.
+/// The Amp command for a profile, after tilde expansion and path normalisation. This
+/// backs the confirmation sheet fields and the native monitor helper launch.
 public struct ResolvedRunnerCommand: Equatable, Sendable {
     public let executableURL: URL
     public let arguments: [String]
@@ -37,7 +37,7 @@ public enum RunnerCommandBuilderError: Error, Equatable, CustomStringConvertible
 /// Pure translation of a `RunnerProfile` into the Amp command the monitor helper runs.
 ///
 /// Deliberately free of any process/file-system side effects so it can be unit tested
-/// and so the confirmation sheet and process launcher share one resolved command.
+/// and so the confirmation sheet and process launcher share one resolved command value.
 public enum RunnerCommandBuilder {
 
     /// Expands a leading `~` (or `~/…`) against the given home directory and

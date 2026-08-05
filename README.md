@@ -26,8 +26,9 @@ you can reproduce a runner outside the app.
   ```
   Amp Runner auto-detects the installer-owned binary at `$AMP_HOME/bin/amp` or
   `~/.amp/bin/amp`, then checks the app's inherited `PATH`, Homebrew prefixes
-  (`/opt/homebrew/bin/amp`, `/usr/local/bin/amp`), and legacy wrapper locations such as
-  `~/.local/bin/amp`. You can also point a profile at any path yourself.
+  (`/opt/homebrew/bin/amp`, `/usr/local/bin/amp`), and legacy wrapper locations
+  (`~/.local/bin/amp`, `~/bin/amp`, `~/.bin/amp`). You can also point a profile at any
+  path yourself.
 - **Remote thread creation enabled** in `~/.config/amp/settings.json`:
   ```json
   { "amp.remoteThreadCreation.enabled": true }
@@ -67,7 +68,8 @@ file.
 
 ## Tests
 
-The portable core has no UI dependencies, so its tests run anywhere Swift does:
+The core and monitor support have no UI dependencies, so their tests run from SwiftPM
+without opening Xcode:
 
 ```sh
 swift test

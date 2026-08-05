@@ -168,7 +168,7 @@ struct ProfileEditorView: View {
             draft.ampExecutablePath = path
             validationMessage = nil
         } else {
-            validationMessage = "Could not find amp in AMP_HOME, ~/.amp/bin, PATH, Homebrew, or ~/.local/bin. Install it with: curl -fsSL https://ampcode.com/install.sh | bash"
+            validationMessage = "Could not find amp in AMP_HOME, ~/.amp/bin, PATH, Homebrew, ~/.local/bin, ~/bin, or ~/.bin. Install it with: curl -fsSL https://ampcode.com/install.sh | bash"
         }
     }
 

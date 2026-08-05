@@ -23,7 +23,7 @@ the app shell.
 | --- | --- | --- | --- |
 | `AmpRunnerCore` | `Sources/AmpRunnerCore/` | any Swift platform | `swift test` |
 | `AmpRunnerMonitorSupport` / `AmpRunnerMonitor` | `Sources/AmpRunnerMonitorSupport/`, `Sources/AmpRunnerMonitor/` | macOS and Linux for tests; bundled as a macOS helper | `swift test`, Xcode build |
-| App shell | `App/` | macOS 13+ only | Xcode build |
+| App shell | `App/` | macOS 14+ only | Xcode build |
 
 `AmpRunnerCore` is a SwiftPM library that imports **Foundation and nothing else** — no
 AppKit, SwiftUI, UserNotifications, or ServiceManagement. Everything that can be decided
@@ -46,18 +46,18 @@ stdout/stderr back to the app's pipes, watches the app PID, and forwards SIGINT 
 by SIGTERM if the app disappears. It exists because a normal child process is reparented
 when a parent app is killed by Xcode or crashes.
 
-The point is testability. Because none of this touches a UI framework or the file system
-directly, all of it runs under `swift test` on Linux and macOS alike, and the parts that
-would otherwise be untestable — "what Amp command will we run?", "is this settings file
-already enabled?", "do these two profiles collide?" — are covered by ordinary unit tests
-rather than by clicking through the app.
+The point is testability. Because none of this touches a UI framework, the core and
+monitor-support tests run from SwiftPM without opening Xcode, and the parts that would
+otherwise be untestable — "what Amp command will we run?", "is this settings file already
+enabled?", "do these two profiles collide?" — are covered by ordinary unit tests rather
+than by clicking through the app.
 
 The consequence for the UI layer is that it stays thin. `RunnerCoordinator` holds state
 and routes actions, `ProcessSupervisor` owns one monitored process, and the SwiftUI views
 render. None of them make decisions the core could have made. In particular, the
-confirmation sheet displays the same `ResolvedRunnerCommand` value that is handed to the
-launcher, so the Amp executable or arguments the user approves cannot drift from what is
-run.
+confirmation sheet summarizes the same `ResolvedRunnerCommand` value that is handed to
+the launcher, so the Amp executable or arguments the user approves cannot drift from what
+is run.
 
 ## 3. Distribution recommendation
 

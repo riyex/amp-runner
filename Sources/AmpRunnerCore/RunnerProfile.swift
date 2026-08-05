@@ -14,7 +14,7 @@ public struct RunnerProfile: Codable, Identifiable, Equatable, Hashable, Sendabl
     public var ampExecutablePath: String
     public var arguments: [String]
     public var autoStart: Bool
-    /// Defaults to `true`: the confirmation sheet showing the exact resolved command
+    /// Defaults to `true`: the confirmation sheet showing the resolved launch settings
     /// is opt-out, never opt-in.
     public var confirmBeforeStart: Bool
     public var createdAt: Date
