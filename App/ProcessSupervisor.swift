@@ -55,7 +55,7 @@ final class ProcessSupervisor: ObservableObject {
         self.profile = profile
     }
 
-    /// The command that `start()` will execute, for the confirmation sheet.
+    /// The Amp command that `start()` hands to the native monitor helper.
     func resolvedCommand() throws -> ResolvedRunnerCommand {
         try RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: homeDirectoryPath)
     }
@@ -149,7 +149,7 @@ final class ProcessSupervisor: ObservableObject {
         self.process = process
         self.stdoutPipe = out
         self.stderrPipe = err
-        append(logLine: "$ " + RunnerCommandBuilder.commandPreview(for: command))
+        append(logLine: "[amp-runner] equivalent terminal command: " + RunnerCommandBuilder.commandPreview(for: command))
         setStatus(.starting)
     }
 

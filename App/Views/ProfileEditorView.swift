@@ -81,15 +81,15 @@ struct ProfileEditorView: View {
 
                 Section("Behaviour") {
                     Toggle("Start this runner automatically when Amp Runner launches", isOn: $draft.autoStart)
-                    Toggle("Always confirm the exact command before starting", isOn: $draft.confirmBeforeStart)
+                    Toggle("Always show start confirmation", isOn: $draft.confirmBeforeStart)
                     if !draft.confirmBeforeStart {
-                        Text("With confirmation off, Start runs the command below immediately.")
+                        Text("With confirmation off, Start launches Amp immediately with the resolved settings below.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Section("Command Preview") {
+                Section("Terminal Equivalent") {
                     Text(coordinator.commandPreview(for: draft))
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)

@@ -103,7 +103,7 @@ final class RunnerCoordinator: ObservableObject {
     private func startAutoStartProfiles() {
         for profile in profiles where profile.autoStart {
             // Auto-start deliberately bypasses the confirmation sheet: the user already
-            // consented to this exact command by enabling auto-start on the profile.
+            // consented to this profile's resolved Amp settings by enabling auto-start.
             supervisor(for: profile).start()
         }
     }

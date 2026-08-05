@@ -1,8 +1,7 @@
 import Foundation
 
-/// The user-facing Amp command for a profile, after tilde expansion and path
-/// normalisation. This is what the confirmation sheet displays — no part of it is
-/// inferred at launch time.
+/// The Amp command for a profile, after tilde expansion and path normalisation. This is
+/// what the confirmation sheet displays and what the native monitor helper launches.
 public struct ResolvedRunnerCommand: Equatable, Sendable {
     public let executableURL: URL
     public let arguments: [String]
@@ -35,7 +34,7 @@ public enum RunnerCommandBuilderError: Error, Equatable, CustomStringConvertible
     }
 }
 
-/// Pure translation of a `RunnerProfile` into a user-facing Amp command.
+/// Pure translation of a `RunnerProfile` into the Amp command the monitor helper runs.
 ///
 /// Deliberately free of any process/file-system side effects so it can be unit tested
 /// and so the confirmation sheet and process launcher share one resolved command.
@@ -99,8 +98,7 @@ public enum RunnerCommandBuilder {
         )
     }
 
-    /// A single line the user can read (and paste into a terminal) describing exactly
-    /// what will run, e.g.
+    /// A copy-pasteable terminal equivalent for the resolved command, e.g.
     /// `cd /Users/me/src/sample-project && /opt/homebrew/bin/amp --no-tui --runner-id sample-runner`
     public static func commandPreview(for command: ResolvedRunnerCommand) -> String {
         let parts = [command.executableURL.path] + command.arguments

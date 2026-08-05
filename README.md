@@ -8,8 +8,8 @@ you no way to see whether your runners are up, and no way to run several of them
 per repository) without keeping terminal windows open. Amp Runner is that front end and
 nothing more: it runs your own `amp` binary as a supervised child process, shows its status in the
 menu bar, and lets you start, stop, and inspect each runner. It does not reimplement,
-wrap, proxy, or modify Amp's protocol, and every command it runs is shown to you before
-it runs so you can reproduce it in a terminal.
+wrap, proxy, or modify Amp's protocol, and it can show an equivalent terminal command so
+you can reproduce a runner outside the app.
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ never claim the same working directory.
    on by default; "don't ask again" is a per-profile opt-out.
 4. The menu bar shows each runner's state: Stopped, Starting, Online (connected, waiting
    for work), Working (executing a thread), or Error. Per-profile submenus give you logs,
-   Finder/Terminal access, and a copyable version of the exact command.
+   Finder/Terminal access, and a copyable equivalent terminal command.
 
 Notifications for thread start / finish / failure and a **Start Amp Runner at Login**
 toggle are both in the menu.

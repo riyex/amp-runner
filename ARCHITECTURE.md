@@ -11,8 +11,8 @@ are up, to start and stop them without keeping terminal windows open, or to keep
 of them (one per repository) straight. Amp Runner is that front-end and nothing more — it
 runs the user's own `amp` binary as a supervised child process, reads its output, and
 shows status. It does not reimplement, wrap, proxy, or modify Amp's protocol, and if Amp
-Runner is quit, everything it supervised can be reproduced by pasting the command it
-displays into a terminal.
+Runner is quit, everything it supervised can be reproduced by pasting the equivalent
+terminal command it displays.
 
 ## 2. Core / UI split
 
@@ -175,9 +175,10 @@ These properties are non-negotiable and are implemented literally.
    a new profile's working directory starts empty and fails validation until the user
    picks one.
 2. **Confirm before start.** `RunnerProfile.confirmBeforeStart` defaults to `true`.
-   Starting a runner presents a sheet showing the exact resolved executable path, the full
-   argument list, and the resolved working directory — the same `ResolvedRunnerCommand`
-   that will be executed. "Don't ask again" is a deliberate per-profile opt-out, not the
+   Starting a runner presents a sheet showing the resolved executable path, the full
+   argument list, and the resolved working directory. The native monitor helper receives
+   the same `ResolvedRunnerCommand` and launches Amp directly with that working directory
+   and argument list. "Don't ask again" is a deliberate per-profile opt-out, not the
    default.
 3. **No credential storage, ever.** The app persists only its own non-secret
    configuration — name, runner ID, paths, arguments, flags — as JSON at
