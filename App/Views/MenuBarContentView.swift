@@ -77,6 +77,7 @@ struct MenuBarContentView: View {
 
         Divider()
 
+        Button("About Amp Runner") { showAbout() }
         Button("Quit Amp Runner") {
             coordinator.onTerminate()
             NSApplication.shared.terminate(nil)
@@ -163,6 +164,20 @@ struct MenuBarContentView: View {
         alert.addButton(withTitle: "OK")
         SettingsWindowOpener.activateApp()
         alert.runModal()
+    }
+
+    private func showAbout() {
+        let credits = NSAttributedString(
+            string: AmpRunnerBranding.nonAffiliationNotice,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]
+        )
+        SettingsWindowOpener.activateApp()
+        NSApplication.shared.orderFrontStandardAboutPanel(options: [
+            .credits: credits
+        ])
     }
 
     private var launchAtLoginBinding: Binding<Bool> {

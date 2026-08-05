@@ -11,6 +11,9 @@ menu bar, and lets you start, stop, and inspect each runner. It does not reimple
 wrap, proxy, or modify Amp's protocol, and it can show an equivalent terminal command so
 you can reproduce a runner outside the app.
 
+Amp Runner is an independent project and is not affiliated with, endorsed by, sponsored
+by, or connected to Sourcegraph, Amp, or AmpCode.
+
 ## Prerequisites
 
 - **macOS 14 (Sonoma) or later.**
