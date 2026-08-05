@@ -58,6 +58,39 @@ public enum RunnerStatus: Equatable, Hashable, Sendable {
     }
 }
 
+/// Aggregate status used by the menu bar item when multiple runners disagree.
+public enum RunnerAggregateStatus: Equatable, Hashable, Sendable {
+    case stopped
+    case starting
+    case online
+    case working
+    case error
+
+    public var accessibilityDescription: String {
+        switch self {
+        case .stopped: return "all runners stopped"
+        case .starting: return "runner starting"
+        case .online: return "runner online"
+        case .working: return "runner working"
+        case .error: return "runner error"
+        }
+    }
+}
+
+extension RunnerStatus {
+    /// Brand precedence for the menu bar aggregate indicator:
+    /// error > working > starting > online > stopped.
+    public static func menuBarAggregateStatus(for statuses: [RunnerStatus]) -> RunnerAggregateStatus {
+        if statuses.contains(where: { if case .error = $0 { return true } else { return false } }) {
+            return .error
+        }
+        if statuses.contains(.working) { return .working }
+        if statuses.contains(.starting) { return .starting }
+        if statuses.contains(.online) { return .online }
+        return .stopped
+    }
+}
+
 extension RunnerStatus: CustomStringConvertible {
     public var description: String { detailedDescription }
 }

@@ -1,5 +1,7 @@
 # Amp Runner
 
+<img src="App/Resources/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" width="96" alt="Amp Runner icon">
+
 Amp Runner is a native macOS menu-bar app that supervises local
 [Amp](https://ampcode.com) runner processes. Amp's headless runner mode
 (`amp --no-tui`) connects back to ampcode.com and waits to accept threads you create
@@ -10,6 +12,8 @@ nothing more: it runs your own `amp` binary as a supervised child process, shows
 menu bar, and lets you start, stop, and inspect each runner. It does not reimplement,
 wrap, proxy, or modify Amp's protocol, and it can show an equivalent terminal command so
 you can reproduce a runner outside the app.
+
+The icon uses the Threads mark: three lanes bundling through one waist, then running on.
 
 Amp Runner is an independent project and is not affiliated with, endorsed by, sponsored
 by, or connected to Sourcegraph, Amp, or AmpCode.

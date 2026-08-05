@@ -34,19 +34,76 @@ struct AmpRunnerApp: App {
 /// Status item contents. Kept as its own observing view so the icon tracks runner state.
 struct MenuBarLabelView: View {
     @ObservedObject var coordinator: RunnerCoordinator
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isWorkingPulseVisible = false
 
     var body: some View {
-        Image(systemName: symbolName)
+        HStack(spacing: 3) {
+            Image("MenubarTemplate")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 17, height: 17)
+                .opacity(aggregateStatus == .stopped ? 0.45 : 1)
+
+            statusDot
+        }
+        .accessibilityLabel("Amp Runner: \(aggregateStatus.accessibilityDescription)")
+        .onAppear { updateWorkingPulse(for: aggregateStatus) }
+        .onChange(of: aggregateStatus) { _, status in
+            updateWorkingPulse(for: status)
+        }
     }
 
-    private var symbolName: String {
-        let statuses = coordinator.profiles.map { coordinator.status(for: $0) }
-        if statuses.contains(where: { if case .error = $0 { return true } else { return false } }) {
-            return "exclamationmark.triangle"
+    private var aggregateStatus: RunnerAggregateStatus {
+        RunnerStatus.menuBarAggregateStatus(
+            for: coordinator.profiles.map { coordinator.status(for: $0) }
+        )
+    }
+
+    @ViewBuilder
+    private var statusDot: some View {
+        switch aggregateStatus {
+        case .stopped:
+            EmptyView()
+        case .starting:
+            Circle()
+                .stroke(mintColor, lineWidth: 1.2)
+                .frame(width: 5, height: 5)
+        case .online:
+            Circle()
+                .fill(mintColor)
+                .frame(width: 5, height: 5)
+        case .working:
+            Circle()
+                .fill(mintColor)
+                .frame(width: 7, height: 7)
+                .background {
+                    Circle()
+                        .fill(mintColor.opacity(isWorkingPulseVisible ? 0.28 : 0.1))
+                        .frame(width: 12, height: 12)
+                }
+        case .error:
+            Circle()
+                .fill(Color(nsColor: .systemRed))
+                .frame(width: 5, height: 5)
         }
-        if statuses.contains(.working) { return "bolt.horizontal.circle.fill" }
-        if statuses.contains(.online) { return "bolt.horizontal.circle" }
-        return "bolt.horizontal"
+    }
+
+    private var mintColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0.353, green: 0.820, blue: 0.659)
+            : Color(red: 0.184, green: 0.561, blue: 0.427)
+    }
+
+    private func updateWorkingPulse(for status: RunnerAggregateStatus) {
+        guard status == .working else {
+            isWorkingPulseVisible = false
+            return
+        }
+        withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+            isWorkingPulseVisible = true
+        }
     }
 }
 
