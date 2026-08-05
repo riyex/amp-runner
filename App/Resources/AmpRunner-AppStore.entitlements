@@ -6,9 +6,9 @@
   Under this entitlement set the spawned `amp` process inherits the app's sandbox, so it
   (and its own children: git, ssh, node, MCP servers) can only reach the app container
   and the folder the user explicitly granted. In practice that means ~/.ssh,
-  ~/.gitconfig, ~/.config/amp and Homebrew-installed binaries are unreachable, which
-  defeats the tool's purpose for most users. This variant is kept only for the narrow
-  case of a single, fully self-contained working directory.
+  ~/.gitconfig, ~/.config/amp, ~/.amp/bin/amp, and Homebrew-installed binaries are
+  unreachable, which defeats the tool's purpose for most users. This variant is kept
+  only for the narrow case of a single, fully self-contained working directory.
 -->
 <plist version="1.0">
 <dict>

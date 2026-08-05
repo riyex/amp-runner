@@ -7,10 +7,22 @@ import PackageDescription
 let package = Package(
     name: "AmpRunnerCore",
     products: [
-        .library(name: "AmpRunnerCore", targets: ["AmpRunnerCore"])
+        .library(name: "AmpRunnerCore", targets: ["AmpRunnerCore"]),
+        .library(name: "AmpRunnerMonitorSupport", targets: ["AmpRunnerMonitorSupport"])
     ],
     targets: [
         .target(name: "AmpRunnerCore"),
-        .testTarget(name: "AmpRunnerCoreTests", dependencies: ["AmpRunnerCore"])
+        .target(name: "AmpRunnerMonitorSupport"),
+        .executableTarget(
+            name: "AmpRunnerMonitor",
+            dependencies: ["AmpRunnerMonitorSupport"]
+        ),
+        .testTarget(
+            name: "AmpRunnerCoreTests",
+            dependencies: [
+                "AmpRunnerCore",
+                "AmpRunnerMonitorSupport"
+            ]
+        )
     ]
 )

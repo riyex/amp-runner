@@ -43,10 +43,24 @@ final class RunnerLogParserTests: XCTestCase {
         )
     }
 
+    func testRegisteredMessageMeansOnline() {
+        XCTAssertEqual(
+            parser.parse(line: "16:51:46 Registered. Create threads on https://ampcode.com/ and they will run here. Have fun, happy hacking."),
+            .statusChanged(.online)
+        )
+    }
+
     // MARK: - Thread lifecycle
 
     func testRunningThreadMeansThreadStarted() {
         XCTAssertEqual(parser.parse(line: "running thread T-12345"), .threadStarted)
+    }
+
+    func testCurrentRunningThreadsMessageMeansThreadStarted() {
+        XCTAssertEqual(
+            parser.parse(line: "16:51:42 Running (4 threads running) https://ampcode.com/threads/T-00000000-0000-7000-8000-000000000001"),
+            .threadStarted
+        )
     }
 
     func testNewThreadMeansThreadStarted() {

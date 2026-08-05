@@ -29,9 +29,9 @@ final class RunnerProfileStoreTests: XCTestCase {
     private let fileURL = URL(fileURLWithPath: "/tmp/amp-runner-tests/profiles.json")
 
     private func makeProfile(
-        name: String = "SampleProject",
+        name: String = "Sample Project",
         runnerID: String = "sample-runner",
-        directory: String = "/Users/tester/src/sampleProject"
+        directory: String = "/Users/tester/src/sample-project"
     ) -> RunnerProfile {
         RunnerProfile(
             name: name,
@@ -58,9 +58,9 @@ final class RunnerProfileStoreTests: XCTestCase {
         let io = InMemoryProfileStoreIO()
         let store = RunnerProfileStore(fileURL: fileURL, io: io)
         let original = RunnerProfile(
-            name: "SampleProject",
+            name: "Sample Project",
             runnerID: "sample-runner",
-            workingDirectoryPath: "/Users/tester/src/sampleProject",
+            workingDirectoryPath: "/Users/tester/src/sample-project",
             ampExecutablePath: "/opt/homebrew/bin/amp",
             arguments: ["--no-tui", "--runner-id", "sample-runner"],
             autoStart: true,
@@ -113,11 +113,11 @@ final class RunnerProfileStoreTests: XCTestCase {
         let second = makeProfile(name: "Other", runnerID: "other", directory: "/Users/tester/src/other")
 
         var edited = first
-        edited.name = "SampleProject (renamed)"
+        edited.name = "Sample Project (renamed)"
 
         let result = try store.upsert(edited, into: [first, second])
         XCTAssertEqual(result.count, 2)
-        XCTAssertEqual(result[0].name, "SampleProject (renamed)")
+        XCTAssertEqual(result[0].name, "Sample Project (renamed)")
         XCTAssertEqual(result[1].id, second.id)
     }
 
@@ -134,21 +134,21 @@ final class RunnerProfileStoreTests: XCTestCase {
 
     func testDuplicateWorkingDirectoryIsRejected() {
         let store = RunnerProfileStore(fileURL: fileURL, io: InMemoryProfileStoreIO())
-        let a = makeProfile(runnerID: "a", directory: "/Users/tester/src/sampleProject")
-        let b = makeProfile(name: "B", runnerID: "b", directory: "/Users/tester/src/sampleProject")
+        let a = makeProfile(runnerID: "a", directory: "/Users/tester/src/sample-project")
+        let b = makeProfile(name: "B", runnerID: "b", directory: "/Users/tester/src/sample-project")
 
         XCTAssertThrowsError(try store.save([a, b])) { error in
             XCTAssertEqual(
                 error as? RunnerProfileValidationError,
-                .duplicateWorkingDirectory("/Users/tester/src/sampleProject")
+                .duplicateWorkingDirectory("/Users/tester/src/sample-project")
             )
         }
     }
 
     func testDuplicateWorkingDirectoryDetectionIgnoresTrailingSlashAndDotComponents() {
         let store = RunnerProfileStore(fileURL: fileURL, io: InMemoryProfileStoreIO())
-        let a = makeProfile(runnerID: "a", directory: "/Users/tester/src/sampleProject")
-        let b = makeProfile(name: "B", runnerID: "b", directory: "/Users/tester/./src/sampleProject/")
+        let a = makeProfile(runnerID: "a", directory: "/Users/tester/src/sample-project")
+        let b = makeProfile(name: "B", runnerID: "b", directory: "/Users/tester/./src/sample-project/")
 
         XCTAssertThrowsError(try store.save([a, b]))
     }

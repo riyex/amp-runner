@@ -88,11 +88,8 @@ struct ProfileListView: View {
             Text("A profile supervises one `amp --no-tui` process in one directory of your choosing. Nothing runs until you pick that folder yourself.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Create “SampleProject” Profile") { startSampleProjectQuickStart() }
-                Button("New Profile") {
-                    editingDraft = EditingDraft(profile: coordinator.makeDraftProfile())
-                }
+            Button("New Profile") {
+                editingDraft = EditingDraft(profile: coordinator.makeDraftProfile())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -154,13 +151,6 @@ struct ProfileListView: View {
         editingDraft = EditingDraft(profile: coordinator.makeDuplicateDraft(of: selectedProfile))
     }
 
-    private func startSampleProjectQuickStart() {
-        editingDraft = EditingDraft(
-            profile: coordinator.makeSampleProjectDraft(),
-            suggestedDirectory: coordinator.sampleProjectSuggestedDirectory
-        )
-    }
-
     private func save(_ profile: RunnerProfile) {
         do {
             try coordinator.persist(profile)
@@ -188,8 +178,6 @@ struct ProfileListView: View {
             return
         case .new:
             editingDraft = EditingDraft(profile: coordinator.makeDraftProfile())
-        case .sampleProject:
-            startSampleProjectQuickStart()
         case .edit(let id):
             if let profile = coordinator.profiles.first(where: { $0.id == id }) {
                 editingDraft = EditingDraft(profile: profile)

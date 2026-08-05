@@ -1,7 +1,7 @@
 import Foundation
 
-/// The exact command that will be executed for a profile, after tilde expansion and
-/// path normalisation. This is what the confirmation sheet displays — no part of it is
+/// The user-facing Amp command for a profile, after tilde expansion and path
+/// normalisation. This is what the confirmation sheet displays — no part of it is
 /// inferred at launch time.
 public struct ResolvedRunnerCommand: Equatable, Sendable {
     public let executableURL: URL
@@ -35,10 +35,10 @@ public enum RunnerCommandBuilderError: Error, Equatable, CustomStringConvertible
     }
 }
 
-/// Pure translation of a `RunnerProfile` into a launchable command.
+/// Pure translation of a `RunnerProfile` into a user-facing Amp command.
 ///
 /// Deliberately free of any process/file-system side effects so it can be unit tested
-/// and so the confirmation sheet and the actual launch are guaranteed to agree.
+/// and so the confirmation sheet and process launcher share one resolved command.
 public enum RunnerCommandBuilder {
 
     /// Expands a leading `~` (or `~/…`) against the given home directory and
@@ -101,7 +101,7 @@ public enum RunnerCommandBuilder {
 
     /// A single line the user can read (and paste into a terminal) describing exactly
     /// what will run, e.g.
-    /// `cd /Users/me/src/sampleProject && /opt/homebrew/bin/amp --no-tui --runner-id sample-runner`
+    /// `cd /Users/me/src/sample-project && /opt/homebrew/bin/amp --no-tui --runner-id sample-runner`
     public static func commandPreview(for command: ResolvedRunnerCommand) -> String {
         let parts = [command.executableURL.path] + command.arguments
         let rendered = parts.map(shellQuote).joined(separator: " ")

@@ -5,7 +5,7 @@ import AmpRunnerCore
 /// Supervises exactly one `amp --no-tui` process for one profile.
 ///
 /// Two independent sources of truth feed `status`:
-///  * process liveness and exit code — always reliable
+///  * monitored process liveness and exit code — always reliable
 ///  * parsed log lines — heuristic, and never allowed to contradict a dead process
 @MainActor
 final class ProcessSupervisor: ObservableObject {
@@ -91,13 +91,26 @@ final class ProcessSupervisor: ObservableObject {
         logLines.removeAll(keepingCapacity: true)
         openLogFile()
 
+        let monitorExecutableURL = Self.monitorExecutableURL()
+        guard FileManager.default.isExecutableFile(atPath: monitorExecutableURL.path) else {
+            closeLogFile()
+            setStatus(.error("Monitor helper is missing: \(monitorExecutableURL.path)"))
+            return
+        }
+
+        let launchPlan = RunnerProcessLauncher.monitoredLaunchPlan(
+            for: command,
+            monitorExecutableURL: monitorExecutableURL,
+            parentProcessID: ProcessInfo.processInfo.processIdentifier,
+            shutdownTimeoutSeconds: Self.gracefulShutdownTimeout
+        )
+
         let process = Process()
-        process.executableURL = command.executableURL
-        process.arguments = command.arguments
+        process.executableURL = launchPlan.executableURL
+        process.arguments = launchPlan.arguments
         process.currentDirectoryURL = command.workingDirectoryURL
-        // Inherit the user's environment verbatim: the whole point of running under the
-        // logged-in user's session is that `amp` and its children (git, ssh, node) find
-        // the same PATH, SSH agent, and Amp/MCP session they would from Terminal.
+        // The helper inherits the app environment and starts Amp directly. It exists only
+        // to forward stops and kill Amp if the app is killed before normal cleanup runs.
         process.environment = ProcessInfo.processInfo.environment
 
         let out = Pipe()
@@ -183,6 +196,13 @@ final class ProcessSupervisor: ObservableObject {
         guard let process, process.isRunning else { return }
         append(logLine: "[amp-runner] graceful stop timed out, sending SIGTERM")
         process.terminate()
+    }
+
+    private static func monitorExecutableURL() -> URL {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Helpers", isDirectory: true)
+            .appendingPathComponent("AmpRunnerMonitor")
     }
 
     // MARK: - Output handling

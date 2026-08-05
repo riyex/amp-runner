@@ -73,10 +73,13 @@ public struct RunnerLogParser: Sendable {
         Matcher(phrases: ["finished running thread"]) { _ in .threadFinished },
         Matcher(phrases: ["thread", "started"]) { _ in .threadStarted },
         Matcher(phrases: ["running thread"]) { _ in .threadStarted },
+        Matcher(phrases: ["running (", "thread running)", "ampcode.com/threads/"]) { _ in .threadStarted },
+        Matcher(phrases: ["running (", "threads running)", "ampcode.com/threads/"]) { _ in .threadStarted },
         Matcher(phrases: ["accepted thread"]) { _ in .threadStarted },
         Matcher(phrases: ["new thread"]) { _ in .threadStarted },
 
         // --- Connection / idle ----------------------------------------------
+        Matcher(phrases: ["registered.", "create threads", "will run here"]) { _ in .statusChanged(.online) },
         Matcher(phrases: ["remote controlling the app runner"]) { _ in .statusChanged(.online) },
         Matcher(phrases: ["waiting for threads"]) { _ in .statusChanged(.online) },
         Matcher(phrases: ["runner", "connected"]) { _ in .statusChanged(.online) },

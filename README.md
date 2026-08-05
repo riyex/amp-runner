@@ -6,14 +6,14 @@ Amp Runner is a native macOS menu-bar app that supervises local
 from the web or your phone, executing them in a local working directory — but it gives
 you no way to see whether your runners are up, and no way to run several of them (one
 per repository) without keeping terminal windows open. Amp Runner is that front end and
-nothing more: it spawns your own `amp` binary as a child process, shows its status in the
+nothing more: it runs your own `amp` binary as a supervised child process, shows its status in the
 menu bar, and lets you start, stop, and inspect each runner. It does not reimplement,
 wrap, proxy, or modify Amp's protocol, and every command it runs is shown to you before
 it runs so you can reproduce it in a terminal.
 
 ## Prerequisites
 
-- **macOS 14 (Ventura) or later.**
+- **macOS 14 (Sonoma) or later.**
 - **Xcode 15 or later**, for building the app.
 - **XcodeGen**, which generates the Xcode project from `project.yml`:
   ```sh
@@ -24,9 +24,10 @@ it runs so you can reproduce it in a terminal.
   curl -fsSL https://ampcode.com/install.sh | bash
   amp login
   ```
-  Amp Runner auto-detects the binary via `which amp`, falling back to
-  `/opt/homebrew/bin/amp` and `/usr/local/bin/amp`. You can also point a profile at any
-  path yourself.
+  Amp Runner auto-detects the installer-owned binary at `$AMP_HOME/bin/amp` or
+  `~/.amp/bin/amp`, then checks the app's inherited `PATH`, Homebrew prefixes
+  (`/opt/homebrew/bin/amp`, `/usr/local/bin/amp`), and legacy wrapper locations such as
+  `~/.local/bin/amp`. You can also point a profile at any path yourself.
 - **Remote thread creation enabled** in `~/.config/amp/settings.json`:
   ```json
   { "amp.remoteThreadCreation.enabled": true }
@@ -50,12 +51,16 @@ Or build the Developer ID target from the command line:
 ./Scripts/build_developer_id.sh
 ```
 
-Two targets are generated from the same sources:
+Two app targets are generated from the same sources:
 
 | Target | Entitlements | Use |
 | --- | --- | --- |
 | `AmpRunner` | `App/Resources/AmpRunner.entitlements` (no sandbox) | Direct distribution — **recommended** |
 | `AmpRunner-AppStore` | `App/Resources/AmpRunner-AppStore.entitlements` (sandboxed) | Kept for the narrow case where it works |
+
+A small `AmpRunnerMonitor` command-line helper is also built and copied into
+`AmpRunner.app/Contents/Helpers/` so runners are shut down if the app is stopped by Xcode
+or crashes.
 
 `AmpRunner.xcodeproj` is generated and git-ignored; edit `project.yml`, not the project
 file.
@@ -68,20 +73,19 @@ The portable core has no UI dependencies, so its tests run anywhere Swift does:
 swift test
 ```
 
-This covers the profile model and its validation rules, the command builder, the log-line
-parser, the JSON profile store, and the Amp settings checker — including that a saved
-profile's JSON contains no secrets and that two profiles can never claim the same working
-directory.
+This covers the profile model and its validation rules, the command builder, the native
+monitor helper, the log-line parser, the JSON profile store, and the Amp settings checker
+— including that a saved profile's JSON contains no secrets and that two profiles can
+never claim the same working directory.
 
 ## Using it
 
-1. Open the menu-bar icon and choose **New Profile…** (or the one-click **SampleProject** quick
-   start on first launch).
+1. Open the menu-bar icon and choose **New Profile…**.
 2. Give the profile a name and runner ID, then pick its working directory. The folder
    picker is the only way to set it — Amp Runner never defaults to a directory you did
    not choose.
-3. Start the runner. A confirmation sheet shows the exact executable path, the full
-   argument list, and the resolved working directory before anything is spawned. This is
+3. Start the runner. A confirmation sheet shows the Amp executable path, the full
+   argument list, and the resolved working directory before anything is launched. This is
    on by default; "don't ask again" is a per-profile opt-out.
 4. The menu bar shows each runner's state: Stopped, Starting, Online (connected, waiting
    for work), Working (executing a thread), or Error. Per-profile submenus give you logs,
@@ -98,10 +102,9 @@ tokens, and Git/SSH credentials are never touched. The only thing persisted is A
 Runner's own non-secret configuration — profile names, runner IDs, paths, arguments, and
 flags — as JSON at `~/Library/Application Support/AmpRunner/profiles.json`.
 
-The `amp` process Amp Runner spawns reaches its own credentials through your normal
-environment, exactly as it would if you ran it in a terminal. Amp Runner also never runs
-as root and installs no daemon or privileged helper; everything runs in your logged-in
-user session.
+The `amp` process Amp Runner starts reaches its own credentials through your normal app
+environment. Amp Runner also never runs as root and installs no daemon or privileged
+helper; everything runs in your logged-in user session.
 
 ## Distribution
 

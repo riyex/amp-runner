@@ -59,31 +59,57 @@ public struct RunnerProfile: Codable, Identifiable, Equatable, Hashable, Sendabl
         return args
     }
 
-    /// Well-known install locations checked when auto-detecting the `amp` binary.
-    public static let commonAmpExecutablePaths = [
-        "/opt/homebrew/bin/amp",
-        "/usr/local/bin/amp"
-    ]
-
-    /// The "SampleProject" quick-start seed offered on first launch when no profiles exist.
-    ///
-    /// The working directory is only a *suggestion* for the folder picker — the UI
-    /// still requires the user to confirm it through `NSOpenPanel` so access is never
-    /// silently granted.
-    public static func sampleProjectQuickStart(
+    /// Installer-owned `amp` locations preferred over PATH-facing wrappers.
+    public static func preferredAmpExecutablePaths(
         homeDirectoryPath: String,
-        ampExecutablePath: String
-    ) -> RunnerProfile {
-        let suggested = URL(fileURLWithPath: homeDirectoryPath, isDirectory: true)
-            .appendingPathComponent("src", isDirectory: true)
-            .appendingPathComponent("sampleProject", isDirectory: true)
-            .path
-        return RunnerProfile(
-            name: "SampleProject",
-            runnerID: "sample-runner",
-            workingDirectoryPath: suggested,
-            ampExecutablePath: ampExecutablePath
+        ampHomePath: String? = nil
+    ) -> [String] {
+        let defaultAmpHomePath = "~/.amp"
+        let ampHomeCandidates = [ampHomePath, defaultAmpHomePath]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return deduplicated(
+            ampHomeCandidates.map {
+                executablePath(inAmpHome: $0, homeDirectoryPath: homeDirectoryPath)
+            }
         )
+    }
+
+    /// Well-known install locations checked when auto-detecting the `amp` binary.
+    public static func commonAmpExecutablePaths(
+        homeDirectoryPath: String,
+        ampHomePath: String? = nil
+    ) -> [String] {
+        deduplicated(
+            preferredAmpExecutablePaths(
+                homeDirectoryPath: homeDirectoryPath,
+                ampHomePath: ampHomePath
+            ) + [
+                "/opt/homebrew/bin/amp",
+                "/usr/local/bin/amp",
+                "~/.local/bin/amp",
+                "~/bin/amp",
+                "~/.bin/amp"
+            ]
+            .map { RunnerCommandBuilder.expand(path: $0, homeDirectoryPath: homeDirectoryPath) }
+        )
+    }
+
+    private static func executablePath(inAmpHome ampHomePath: String, homeDirectoryPath: String) -> String {
+        let expandedAmpHomePath = RunnerCommandBuilder.expand(
+            path: ampHomePath,
+            homeDirectoryPath: homeDirectoryPath
+        )
+        return URL(fileURLWithPath: expandedAmpHomePath, isDirectory: true)
+            .appendingPathComponent("bin/amp")
+            .standardizedFileURL
+            .path
+    }
+
+    private static func deduplicated(_ paths: [String]) -> [String] {
+        var seen = Set<String>()
+        return paths.filter { seen.insert($0).inserted }
     }
 }
 

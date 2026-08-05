@@ -7,7 +7,6 @@ import AmpRunnerCore
 enum ProfileDraftRequest: Equatable {
     case none
     case new
-    case sampleProject
     case edit(UUID)
     case duplicate(UUID)
 }
@@ -253,31 +252,8 @@ final class RunnerCoordinator: ObservableObject {
             name: "New Runner",
             runnerID: "runner-\(profiles.count + 1)",
             workingDirectoryPath: "",
-            ampExecutablePath: Self.detectAmpExecutablePath() ?? ""
+            ampExecutablePath: Self.detectAmpExecutablePath(homeDirectoryPath: homeDirectoryPath) ?? ""
         )
-    }
-
-    var shouldOfferQuickStart: Bool { profiles.isEmpty }
-
-    /// Prefilled SampleProject profile for the first-launch quick start. Still returned as a
-    /// *draft* — the editor requires the user to confirm the folder via `NSOpenPanel`
-    /// before it can be saved.
-    func makeSampleProjectDraft() -> RunnerProfile {
-        var draft = RunnerProfile.sampleProjectQuickStart(
-            homeDirectoryPath: homeDirectoryPath,
-            ampExecutablePath: Self.detectAmpExecutablePath() ?? ""
-        )
-        // Suggested path is shown in the editor, but access is not granted until the
-        // user picks the folder themselves.
-        draft.workingDirectoryPath = ""
-        return draft
-    }
-
-    /// Suggested directory to open the folder picker at, for the SampleProject quick start.
-    var sampleProjectSuggestedDirectory: URL {
-        URL(fileURLWithPath: homeDirectoryPath, isDirectory: true)
-            .appendingPathComponent("src", isDirectory: true)
-            .appendingPathComponent("sampleProject", isDirectory: true)
     }
 
     // MARK: - Amp settings
@@ -315,38 +291,25 @@ final class RunnerCoordinator: ObservableObject {
         checkAmpSettings()
     }
 
-    // MARK: - Shell helpers
+    // MARK: - Executable detection
 
-    /// `which amp`, falling back to the well-known Homebrew / /usr/local locations.
-    static func detectAmpExecutablePath() -> String? {
-        if let found = runWhichAmp(), !found.isEmpty { return found }
-        return RunnerProfile.commonAmpExecutablePaths.first {
+    /// Checks installer-owned locations, the app's inherited `PATH`, then other common
+    /// install locations.
+    ///
+    /// This deliberately avoids sourcing shell startup files. Those files are
+    /// shell-specific and may run arbitrary interactive startup code; the final resolved
+    /// executable path should be deterministic and user-visible instead.
+    static func detectAmpExecutablePath(
+        homeDirectoryPath: String = FileManager.default.homeDirectoryForCurrentUser.path,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        AmpExecutableDetector.detect(
+            environmentPath: environment["PATH"],
+            ampHomePath: environment["AMP_HOME"],
+            homeDirectoryPath: homeDirectoryPath
+        ) {
             FileManager.default.isExecutableFile(atPath: $0)
         }
-    }
-
-    private static func runWhichAmp() -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["which", "amp"]
-        process.environment = ProcessInfo.processInfo.environment
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-
-        let path = String(decoding: data, as: UTF8.self)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return path.hasPrefix("/") ? path : nil
     }
 
     // MARK: - Opening things

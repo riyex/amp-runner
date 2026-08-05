@@ -9,8 +9,8 @@ struct ProfileEditorView: View {
     /// Working copy. Nothing is persisted until Save succeeds.
     @State var draft: RunnerProfile
 
-    /// Directory to open the folder picker at, when the caller has a suggestion
-    /// (the SampleProject quick start). Access is still only granted by the user's own pick.
+    /// Directory to open the folder picker at, when the caller has a suggestion.
+    /// Access is still only granted by the user's own pick.
     var suggestedDirectory: URL?
 
     var onSave: (RunnerProfile) -> Void
@@ -168,7 +168,7 @@ struct ProfileEditorView: View {
             draft.ampExecutablePath = path
             validationMessage = nil
         } else {
-            validationMessage = "Could not find amp on PATH, /opt/homebrew/bin, or /usr/local/bin. Install it with: curl -fsSL https://ampcode.com/install.sh | bash"
+            validationMessage = "Could not find amp in AMP_HOME, ~/.amp/bin, PATH, Homebrew, or ~/.local/bin. Install it with: curl -fsSL https://ampcode.com/install.sh | bash"
         }
     }
 

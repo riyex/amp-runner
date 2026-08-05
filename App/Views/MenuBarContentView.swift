@@ -53,7 +53,6 @@ struct MenuBarContentView: View {
 
         if coordinator.profiles.isEmpty {
             Text("No runner profiles yet")
-            Button("Quick Start: Create “SampleProject” Profile…") { open(.profiles, draft: .sampleProject) }
             Button("New Profile…") { open(.profiles, draft: .new) }
         } else {
             ForEach(coordinator.profiles) { profile in

@@ -1,10 +1,10 @@
 import SwiftUI
 import AmpRunnerCore
 
-/// Shown before a runner starts. Displays the **exact** resolved executable path, the
-/// full argument list, and the resolved working directory — the same
-/// `ResolvedRunnerCommand` value that will be handed to `Process`, so what is shown
-/// cannot drift from what is run.
+/// Shown before a runner starts. Displays the resolved Amp executable path, full
+/// argument list, and working directory. The app may launch that command through a
+/// native lifecycle helper, but the visible command is still the Amp invocation the user can
+/// paste into a terminal.
 struct StartConfirmationView: View {
     let profile: RunnerProfile
     let command: ResolvedRunnerCommand
@@ -20,7 +20,7 @@ struct StartConfirmationView: View {
             Text("Start “\(profile.name)”?")
                 .font(.headline)
 
-            Text("Amp Runner will launch the following process as you, in your normal login session. It inherits your environment, so it can use your existing Git, SSH, and Amp configuration exactly as if you ran it in Terminal.")
+            Text("Amp Runner will launch the following process as you, using the app's inherited environment and your existing Git, SSH, and Amp configuration.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

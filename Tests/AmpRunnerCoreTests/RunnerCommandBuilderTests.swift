@@ -6,13 +6,13 @@ final class RunnerCommandBuilderTests: XCTestCase {
     private let home = "/Users/tester"
 
     private func makeProfile(
-        workingDirectory: String = "/Users/tester/src/sampleProject",
+        workingDirectory: String = "/Users/tester/src/sample-project",
         executable: String = "/opt/homebrew/bin/amp",
         arguments: [String]? = nil,
         runnerID: String = "sample-runner"
     ) -> RunnerProfile {
         RunnerProfile(
-            name: "SampleProject",
+            name: "Sample Project",
             runnerID: runnerID,
             workingDirectoryPath: workingDirectory,
             ampExecutablePath: executable,
@@ -47,8 +47,8 @@ final class RunnerCommandBuilderTests: XCTestCase {
 
     func testExpandsTildePrefix() {
         XCTAssertEqual(
-            RunnerCommandBuilder.expand(path: "~/src/sampleProject", homeDirectoryPath: home),
-            "/Users/tester/src/sampleProject"
+            RunnerCommandBuilder.expand(path: "~/src/sample-project", homeDirectoryPath: home),
+            "/Users/tester/src/sample-project"
         )
     }
 
@@ -69,8 +69,8 @@ final class RunnerCommandBuilderTests: XCTestCase {
 
     func testStandardizesRedundantPathComponents() {
         XCTAssertEqual(
-            RunnerCommandBuilder.expand(path: "/Users/tester/./src//sampleProject/", homeDirectoryPath: home),
-            "/Users/tester/src/sampleProject"
+            RunnerCommandBuilder.expand(path: "/Users/tester/./src//sample-project/", homeDirectoryPath: home),
+            "/Users/tester/src/sample-project"
         )
     }
 
@@ -78,11 +78,11 @@ final class RunnerCommandBuilderTests: XCTestCase {
 
     func testResolveProducesAbsoluteURLsAndArguments() throws {
         let command = try RunnerCommandBuilder.resolve(
-            profile: makeProfile(workingDirectory: "~/src/sampleProject"),
+            profile: makeProfile(workingDirectory: "~/src/sample-project"),
             homeDirectoryPath: home
         )
         XCTAssertEqual(command.executableURL.path, "/opt/homebrew/bin/amp")
-        XCTAssertEqual(command.workingDirectoryURL.path, "/Users/tester/src/sampleProject")
+        XCTAssertEqual(command.workingDirectoryURL.path, "/Users/tester/src/sample-project")
         XCTAssertEqual(
             command.arguments,
             ["--no-tui", "--runner-id", "sample-runner", "--remote-control-terminal"]
@@ -141,13 +141,13 @@ final class RunnerCommandBuilderTests: XCTestCase {
     func testResolveRejectsRelativeWorkingDirectory() {
         XCTAssertThrowsError(
             try RunnerCommandBuilder.resolve(
-                profile: makeProfile(workingDirectory: "src/sampleProject"),
+                profile: makeProfile(workingDirectory: "src/sample-project"),
                 homeDirectoryPath: home
             )
         ) { error in
             XCTAssertEqual(
                 error as? RunnerCommandBuilderError,
-                .relativeWorkingDirectory("src/sampleProject")
+                .relativeWorkingDirectory("src/sample-project")
             )
         }
     }
@@ -161,17 +161,17 @@ final class RunnerCommandBuilderTests: XCTestCase {
         )
         XCTAssertEqual(
             RunnerCommandBuilder.commandPreview(for: command),
-            "cd /Users/tester/src/sampleProject && /opt/homebrew/bin/amp --no-tui --runner-id sample-runner --remote-control-terminal"
+            "cd /Users/tester/src/sample-project && /opt/homebrew/bin/amp --no-tui --runner-id sample-runner --remote-control-terminal"
         )
     }
 
     func testCommandPreviewQuotesPathsContainingSpaces() throws {
         let command = try RunnerCommandBuilder.resolve(
-            profile: makeProfile(workingDirectory: "/Users/tester/My Projects/sampleProject"),
+            profile: makeProfile(workingDirectory: "/Users/tester/My Projects/sample-project"),
             homeDirectoryPath: home
         )
         let preview = RunnerCommandBuilder.commandPreview(for: command)
-        XCTAssertTrue(preview.hasPrefix("cd '/Users/tester/My Projects/sampleProject' && "), preview)
+        XCTAssertTrue(preview.hasPrefix("cd '/Users/tester/My Projects/sample-project' && "), preview)
     }
 
     func testCommandPreviewEscapesEmbeddedSingleQuote() {
@@ -188,21 +188,6 @@ final class RunnerCommandBuilderTests: XCTestCase {
             homeDirectoryPath: home
         )
         XCTAssertEqual(preview, RunnerCommandBuilderError.emptyExecutablePath.description)
-    }
-
-    // MARK: - Quick start seed
-
-    func testSampleProjectQuickStartMatchesSpecifiedDefaults() {
-        let profile = RunnerProfile.sampleProjectQuickStart(
-            homeDirectoryPath: home,
-            ampExecutablePath: "/opt/homebrew/bin/amp"
-        )
-        XCTAssertEqual(profile.name, "SampleProject")
-        XCTAssertEqual(profile.runnerID, "sample-runner")
-        XCTAssertEqual(profile.workingDirectoryPath, "/Users/tester/src/sampleProject")
-        XCTAssertEqual(profile.ampExecutablePath, "/opt/homebrew/bin/amp")
-        XCTAssertTrue(profile.confirmBeforeStart)
-        XCTAssertFalse(profile.autoStart)
     }
 
     func testConfirmBeforeStartDefaultsToTrue() {
