@@ -53,7 +53,7 @@ Generate the Xcode project and open it:
 open AmpRunner.xcodeproj
 ```
 
-Or build the Developer ID target from the command line:
+Or create a Release archive for the Developer ID target from the command line:
 
 ```sh
 ./Scripts/build_developer_id.sh
