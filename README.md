@@ -1,5 +1,8 @@
 # Amp Runner
 
+[![CI](https://github.com/riyex/amp-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/riyex/amp-runner/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 <img src="App/Resources/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" width="96" alt="Amp Runner icon">
 
 Amp Runner is a native macOS menu-bar app that supervises local
@@ -17,6 +20,12 @@ The icon uses the Threads mark: three lanes bundling through one waist, then run
 
 Amp Runner is an independent project and is not affiliated with, endorsed by, sponsored
 by, or connected to Sourcegraph, Amp, or AmpCode.
+
+## Installation status
+
+Amp Runner does not yet have a supported binary release. Build it from source using the
+steps below. Future binaries will be signed with a Developer ID certificate and notarized
+before publication.
 
 ## Prerequisites
 
@@ -87,6 +96,9 @@ monitor helper, the log-line parser, the JSON profile store, and the Amp setting
 — including that a saved profile's JSON contains no secrets and that two profiles can
 never claim the same working directory.
 
+macOS is the only supported and tested platform. The core and monitor retain conditional
+Linux plumbing, but the project does not currently claim Linux compatibility.
+
 ## Using it
 
 1. Open the menu-bar icon and choose **New Profile…**.
@@ -131,3 +143,10 @@ why the App Store target still exists.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the core/UI split, the status-detection
 caveats (exit codes are authoritative; the Online/Working distinction is heuristic
 log matching), the security model, and the milestone plan.
+
+## Project information
+
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Maintainer release process](docs/RELEASING.md)
+- [Apache License 2.0](LICENSE)

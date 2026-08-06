@@ -21,13 +21,14 @@ the app shell.
 
 | Layer | Location | Platforms | Verified by |
 | --- | --- | --- | --- |
-| `AmpRunnerCore` | `Sources/AmpRunnerCore/` | any Swift platform | `swift test` |
-| `AmpRunnerMonitorSupport` / `AmpRunnerMonitor` | `Sources/AmpRunnerMonitorSupport/`, `Sources/AmpRunnerMonitor/` | macOS and Linux for tests; bundled as a macOS helper | `swift test`, Xcode build |
+| `AmpRunnerCore` | `Sources/AmpRunnerCore/` | macOS; unverified Linux plumbing | `swift test` on macOS |
+| `AmpRunnerMonitorSupport` / `AmpRunnerMonitor` | `Sources/AmpRunnerMonitorSupport/`, `Sources/AmpRunnerMonitor/` | macOS; unverified Linux plumbing | `swift test`, Xcode build on macOS |
 | App shell | `App/` | macOS 14+ only | Xcode build |
 
 `AmpRunnerCore` is a SwiftPM library that imports **Foundation and nothing else** — no
-AppKit, SwiftUI, UserNotifications, or ServiceManagement. Everything that can be decided
-without a window lives there:
+AppKit, SwiftUI, UserNotifications, or ServiceManagement. Its platform-neutral boundary
+and the monitor's conditional Darwin/Glibc imports leave room for Linux support, but CI
+tests macOS only. Everything that can be decided without a window lives there:
 
 - `RunnerProfile` — the Codable configuration record, its default argument list, and
   field validation.
@@ -47,10 +48,10 @@ by SIGTERM if the app disappears. It exists because a normal child process is re
 when a parent app is killed by Xcode or crashes.
 
 The point is testability. Because none of this touches a UI framework, the core and
-monitor-support tests run from SwiftPM without opening Xcode, and the parts that would
-otherwise be untestable — "what Amp command will we run?", "is this settings file already
-enabled?", "do these two profiles collide?" — are covered by ordinary unit tests rather
-than by clicking through the app.
+monitor-support tests run from SwiftPM on macOS without opening Xcode, and the parts that
+would otherwise be untestable — "what Amp command will we run?", "is this settings file
+already enabled?", "do these two profiles collide?" — are covered by ordinary unit tests
+rather than by clicking through the app.
 
 The consequence for the UI layer is that it stays thin. `RunnerCoordinator` holds state
 and routes actions, `ProcessSupervisor` owns one monitored process, and the SwiftUI views

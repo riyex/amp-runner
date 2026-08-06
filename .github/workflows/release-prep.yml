@@ -1,0 +1,79 @@
+name: Release Preparation
+
+on:
+  push:
+    branches:
+      - release/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Prepare unsigned archive
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Validate release version
+        id: release
+        run: |
+          version=$(./Scripts/validate_release_branch.sh "$GITHUB_REF_NAME")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Test release tooling
+        run: ./Scripts/tests/validate_release_branch_test.sh
+
+      - name: Run Swift tests
+        run: swift test
+
+      - name: Validate property list
+        run: plutil -lint App/Resources/Info.plist
+
+      - name: Validate asset catalogs
+        run: find App/Resources/Assets.xcassets -name Contents.json -print0 | xargs -0 -n1 jq empty
+
+      - name: Install XcodeGen
+        run: command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
+
+      - name: Generate Xcode project
+        run: ./Scripts/generate_project.sh
+
+      - name: Create unsigned archive
+        run: |
+          xcodebuild \
+            -project AmpRunner.xcodeproj \
+            -scheme AmpRunner \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath "$PWD/build/AmpRunner-unsigned.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+
+      - name: Package unsigned archive
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          archive="AmpRunner-${VERSION}-unsigned-not-for-distribution.zip"
+          checksum="AmpRunner-${VERSION}-unsigned-not-for-distribution.sha256"
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/AmpRunner-unsigned.xcarchive \
+            "build/$archive"
+          (cd build && shasum -a 256 "$archive" > "$checksum")
+
+      - name: Upload unsigned validation artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: AmpRunner-${{ steps.release.outputs.version }}-unsigned-not-for-distribution
+          path: |
+            build/AmpRunner-${{ steps.release.outputs.version }}-unsigned-not-for-distribution.zip
+            build/AmpRunner-${{ steps.release.outputs.version }}-unsigned-not-for-distribution.sha256
+          if-no-files-found: error
+          retention-days: 7
