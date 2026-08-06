@@ -17,5 +17,8 @@ build/
 *.dmg
 *.zip
 
+# Local agent worktrees
+.worktrees/
+
 # macOS
 .DS_Store
