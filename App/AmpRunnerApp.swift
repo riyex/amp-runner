@@ -49,23 +49,17 @@ struct SettingsWindowNotificationBridge: View {
 struct MenuBarLabelView: View {
     @ObservedObject var coordinator: RunnerCoordinator
     @Environment(\.colorScheme) private var colorScheme
-    @State private var isWorkingPulseVisible = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 3) {
-            Image("MenubarTemplate")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 17, height: 17)
-                .opacity(aggregateStatus == .stopped ? 0.45 : 1)
-
-            statusDot
-        }
-        .accessibilityLabel("Amp Runner: \(aggregateStatus.accessibilityDescription)")
-        .onAppear { updateWorkingPulse(for: aggregateStatus) }
-        .onChange(of: aggregateStatus) { _, status in
-            updateWorkingPulse(for: status)
+        TimelineView(
+            .animation(
+                minimumInterval: 1.0 / 15.0,
+                paused: aggregateStatus != .working || reduceMotion
+            )
+        ) { context in
+            Image(nsImage: renderedIcon(at: context.date))
+                .accessibilityLabel("Amp Runner: \(aggregateStatus.accessibilityDescription)")
         }
     }
 
@@ -75,9 +69,57 @@ struct MenuBarLabelView: View {
         )
     }
 
+    private func renderedIcon(at date: Date) -> NSImage {
+        let renderer = ImageRenderer(
+            content: MenuBarStatusArtwork(
+                status: aggregateStatus,
+                colorScheme: colorScheme,
+                workingPulseOpacity: workingPulseOpacity(at: date)
+            )
+        )
+        renderer.scale = 2
+        return renderer.nsImage ?? NSImage(size: NSSize(width: 17, height: 18))
+    }
+
+    private func workingPulseOpacity(at date: Date) -> Double {
+        guard aggregateStatus == .working, !reduceMotion else { return 0.1 }
+        let halfCycle = 1.4
+        let elapsed = date.timeIntervalSinceReferenceDate
+            .truncatingRemainder(dividingBy: halfCycle * 2)
+        let progress = elapsed <= halfCycle
+            ? elapsed / halfCycle
+            : 2 - elapsed / halfCycle
+        return 0.1 + (0.18 * progress)
+    }
+}
+
+private struct MenuBarStatusArtwork: View {
+    let status: RunnerAggregateStatus
+    let colorScheme: ColorScheme
+    let workingPulseOpacity: Double
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image("MenubarTemplate")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(menuBarForegroundColor)
+                .frame(width: 17, height: 17)
+                .opacity(status == .stopped ? 0.45 : 1)
+
+            ZStack {
+                statusDot
+            }
+            .frame(width: 12, height: 12)
+        }
+        .frame(height: 18)
+        .fixedSize()
+    }
+
     @ViewBuilder
     private var statusDot: some View {
-        switch aggregateStatus {
+        switch status {
         case .stopped:
             EmptyView()
         case .starting:
@@ -89,14 +131,15 @@ struct MenuBarLabelView: View {
                 .fill(mintColor)
                 .frame(width: 5, height: 5)
         case .working:
-            Circle()
-                .fill(mintColor)
-                .frame(width: 7, height: 7)
-                .background {
-                    Circle()
-                        .fill(mintColor.opacity(isWorkingPulseVisible ? 0.28 : 0.1))
-                        .frame(width: 12, height: 12)
-                }
+            ZStack {
+                Circle()
+                    .fill(mintColor.opacity(workingPulseOpacity))
+                    .frame(width: 12, height: 12)
+                Circle()
+                    .fill(mintColor)
+                    .frame(width: 7, height: 7)
+            }
+            .frame(width: 12, height: 12)
         case .error:
             Circle()
                 .fill(Color(nsColor: .systemRed))
@@ -104,20 +147,14 @@ struct MenuBarLabelView: View {
         }
     }
 
+    private var menuBarForegroundColor: Color {
+        colorScheme == .dark ? .white : .black
+    }
+
     private var mintColor: Color {
         colorScheme == .dark
             ? Color(red: 0.353, green: 0.820, blue: 0.659)
             : Color(red: 0.184, green: 0.561, blue: 0.427)
-    }
-
-    private func updateWorkingPulse(for status: RunnerAggregateStatus) {
-        guard status == .working else {
-            isWorkingPulseVisible = false
-            return
-        }
-        withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-            isWorkingPulseVisible = true
-        }
     }
 }
 
