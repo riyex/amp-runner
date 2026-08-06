@@ -19,6 +19,10 @@ final class ProcessSupervisor: ObservableObject {
     @Published private(set) var status: RunnerStatus = .stopped
     @Published private(set) var logLines: [String] = []
     @Published private(set) var lastEvent: RunnerEvent?
+    @Published private(set) var activeThread: RunnerThreadDetails?
+    @Published private(set) var activeThreadStartedAt: Date?
+    @Published private(set) var lastCompletedThread: RunnerThreadDetails?
+    @Published private(set) var lastThreadDuration: TimeInterval?
 
     let profileID: UUID
     private(set) var profile: RunnerProfile
@@ -35,6 +39,9 @@ final class ProcessSupervisor: ObservableObject {
     private var stderrRemainder = Data()
     private var escalationTask: Task<Void, Never>?
     private var logFileHandle: FileHandle?
+    private var runningCommand: ResolvedRunnerCommand?
+    private var metadataTask: Task<RunnerThreadDetails?, Never>?
+    private var metadataRequestID: UUID?
 
     init(
         profile: RunnerProfile,
@@ -89,6 +96,12 @@ final class ProcessSupervisor: ObservableObject {
         stdoutRemainder = Data()
         stderrRemainder = Data()
         logLines.removeAll(keepingCapacity: true)
+        activeThread = nil
+        activeThreadStartedAt = nil
+        lastCompletedThread = nil
+        lastThreadDuration = nil
+        metadataTask?.cancel()
+        metadataRequestID = nil
         openLogFile()
 
         let monitorExecutableURL = Self.monitorExecutableURL()
@@ -145,6 +158,8 @@ final class ProcessSupervisor: ObservableObject {
             setStatus(.error("Failed to launch: \(error.localizedDescription)"))
             return
         }
+
+        runningCommand = command
 
         self.process = process
         self.stdoutPipe = out
@@ -205,6 +220,50 @@ final class ProcessSupervisor: ObservableObject {
             .appendingPathComponent("AmpRunnerMonitor")
     }
 
+    var threadSummary: String? {
+        if let activeThread {
+            var parts = [activeThread.displayName]
+            if let project = activeThread.projectDisplayName {
+                parts.append(project)
+            }
+            if let activeThreadStartedAt {
+                parts.append("running \(Self.formattedDuration(Date().timeIntervalSince(activeThreadStartedAt)))")
+            }
+            return parts.joined(separator: " - ")
+        }
+
+        if let lastCompletedThread {
+            var parts = ["Last: \(lastCompletedThread.displayName)"]
+            if let lastThreadDuration {
+                parts.append(Self.formattedDuration(lastThreadDuration))
+            }
+            return parts.joined(separator: " - ")
+        }
+
+        return nil
+    }
+
+    var threadURLString: String? {
+        activeThread?.webURLString ?? lastCompletedThread?.webURLString
+    }
+
+    static func formattedDuration(_ duration: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(duration.rounded()))
+        if totalSeconds < 60 {
+            return "\(totalSeconds)s"
+        }
+
+        let totalMinutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        if totalMinutes < 60 {
+            return seconds == 0 ? "\(totalMinutes)m" : "\(totalMinutes)m \(seconds)s"
+        }
+
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
+    }
+
     // MARK: - Output handling
 
     private func ingest(_ data: Data, isStandardError: Bool) {
@@ -233,13 +292,151 @@ final class ProcessSupervisor: ObservableObject {
         let cleaned = line.replacingOccurrences(of: "\r", with: "")
         append(logLine: cleaned)
 
-        guard let event = parser.parse(line: cleaned) else { return }
-        lastEvent = event
-        events.send(event)
+        guard let parsedEvent = parser.parse(line: cleaned) else { return }
+        lastEvent = parsedEvent
+
+        guard let event = record(event: parsedEvent) else { return }
 
         // A heuristic log line must never resurrect a process that already exited.
         if let implied = event.impliedStatus, isRunning {
             setStatus(implied)
+        }
+
+        emit(event: event)
+    }
+
+    private func record(event: RunnerEvent) -> RunnerEvent? {
+        switch event {
+        case .threadStarted(let observed):
+            let previous = activeThread
+            let hadActiveThread = activeThreadStartedAt != nil
+            let merged = (previous ?? RunnerThreadDetails()).merging(observed)
+            activeThread = merged
+            if activeThreadStartedAt == nil {
+                activeThreadStartedAt = Date()
+            }
+            scheduleMetadataRefresh(for: merged)
+
+            guard !isDuplicateStart(
+                hadActiveThread: hadActiveThread,
+                previous: previous,
+                observed: observed
+            ) else {
+                return nil
+            }
+            return .threadStarted(merged)
+
+        case .threadIdle(let observed):
+            let duration = activeThreadStartedAt.map { Date().timeIntervalSince($0) }
+            let merged = (activeThread ?? RunnerThreadDetails()).merging(observed)
+            let thread = merged.isEmpty ? nil : merged
+            activeThread = nil
+            activeThreadStartedAt = nil
+            lastCompletedThread = thread
+            lastThreadDuration = duration
+            return .threadIdle(thread)
+
+        case .threadFinished(let observed, _):
+            let duration = activeThreadStartedAt.map { Date().timeIntervalSince($0) }
+            let merged = (activeThread ?? RunnerThreadDetails()).merging(observed)
+            let thread = merged.isEmpty ? nil : merged
+            activeThread = nil
+            activeThreadStartedAt = nil
+            lastCompletedThread = thread
+            lastThreadDuration = duration
+            return .threadFinished(thread, duration: duration)
+
+        case .threadFailed(let detail, let observed, _):
+            let duration = activeThreadStartedAt.map { Date().timeIntervalSince($0) }
+            let merged = (activeThread ?? RunnerThreadDetails()).merging(observed)
+            let thread = merged.isEmpty ? nil : merged
+            activeThread = nil
+            activeThreadStartedAt = nil
+            lastCompletedThread = thread
+            lastThreadDuration = duration
+            return .threadFailed(detail, thread: thread, duration: duration)
+
+        case .statusChanged, .unrecognizedLine:
+            return event
+        }
+    }
+
+    private func isDuplicateStart(
+        hadActiveThread: Bool,
+        previous: RunnerThreadDetails?,
+        observed: RunnerThreadDetails
+    ) -> Bool {
+        guard hadActiveThread else { return false }
+        guard let previousID = previous?.id, let observedID = observed.id else { return true }
+        return previousID == observedID
+    }
+
+    private func emit(event: RunnerEvent) {
+        guard event.isNotifiable else {
+            events.send(event)
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let enriched = await self.enrichedNotificationEvent(event)
+            self.events.send(enriched)
+        }
+    }
+
+    private func enrichedNotificationEvent(_ event: RunnerEvent) async -> RunnerEvent {
+        guard let metadata = await metadataTask?.value else { return event }
+
+        switch event {
+        case .threadStarted(let details):
+            let enriched = details.merging(metadata)
+            if activeThread != nil {
+                activeThread = activeThread?.merging(metadata) ?? metadata
+            }
+            return .threadStarted(enriched)
+
+        case .threadIdle(let details):
+            let enriched = (details ?? RunnerThreadDetails()).merging(metadata)
+            let thread = enriched.isEmpty ? details : enriched
+            lastCompletedThread = thread
+            return .threadIdle(thread)
+
+        case .threadFinished(let details, let duration):
+            let enriched = (details ?? RunnerThreadDetails()).merging(metadata)
+            let thread = enriched.isEmpty ? details : enriched
+            lastCompletedThread = thread
+            return .threadFinished(thread, duration: duration)
+
+        case .threadFailed(let detail, let details, let duration):
+            let enriched = (details ?? RunnerThreadDetails()).merging(metadata)
+            let thread = enriched.isEmpty ? details : enriched
+            lastCompletedThread = thread
+            return .threadFailed(detail, thread: thread, duration: duration)
+
+        case .statusChanged, .unrecognizedLine:
+            return event
+        }
+    }
+
+    private func scheduleMetadataRefresh(for thread: RunnerThreadDetails) {
+        guard let runningCommand else { return }
+
+        metadataTask?.cancel()
+        let requestID = UUID()
+        metadataRequestID = requestID
+
+        let task = Task.detached(priority: .utility) {
+            AmpThreadMetadataFetcher.fetchMatchingThread(
+                observed: thread,
+                command: runningCommand
+            )
+        }
+        metadataTask = task
+
+        Task { @MainActor [weak self] in
+            guard let self, let metadata = await task.value else { return }
+            guard self.metadataRequestID == requestID, self.activeThread != nil else { return }
+            self.activeThread = self.activeThread?.merging(metadata) ?? metadata
         }
     }
 
@@ -261,6 +458,9 @@ final class ProcessSupervisor: ObservableObject {
         stdoutPipe = nil
         stderrPipe = nil
         process = nil
+        runningCommand = nil
+        metadataTask?.cancel()
+        metadataRequestID = nil
 
         // Exit-code detection is authoritative and always overrides the log heuristics.
         if reason == .uncaughtSignal {
@@ -273,6 +473,8 @@ final class ProcessSupervisor: ObservableObject {
             append(logLine: "[amp-runner] process exited with code \(exitCode)")
             setStatus(.error("exit code \(exitCode)"))
         }
+        activeThread = nil
+        activeThreadStartedAt = nil
         closeLogFile()
     }
 
@@ -331,5 +533,136 @@ final class ProcessSupervisor: ObservableObject {
     private func closeLogFile() {
         try? logFileHandle?.close()
         logFileHandle = nil
+    }
+}
+
+private struct AmpThreadListEntry: Decodable {
+    var id: String
+    var title: String?
+    var updated: String?
+    var tree: String?
+    var messageCount: Int?
+
+    var details: RunnerThreadDetails {
+        RunnerThreadDetails(
+            id: id,
+            title: title,
+            webURLString: "https://ampcode.com/threads/\(id)",
+            treeURLString: tree,
+            messageCount: messageCount,
+            updatedAt: Self.parseDate(updated)
+        )
+    }
+
+    private static func parseDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: value) {
+            return date
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
+    }
+}
+
+private enum AmpThreadMetadataFetcher {
+    private static let timeout: TimeInterval = 3
+
+    static func fetchMatchingThread(
+        observed: RunnerThreadDetails,
+        command: ResolvedRunnerCommand
+    ) -> RunnerThreadDetails? {
+        guard let data = runThreadList(command: command),
+              let jsonData = extractJSONData(from: data),
+              let entries = try? JSONDecoder().decode([AmpThreadListEntry].self, from: jsonData)
+        else {
+            return nil
+        }
+
+        if let id = observed.id,
+           let match = entries.first(where: { $0.id == id }) {
+            return observed.merging(match.details)
+        }
+
+        let workingPath = normalizedPath(command.workingDirectoryURL.path)
+        if let match = entries.first(where: { normalizedTreePath($0.tree) == workingPath }) {
+            return observed.merging(match.details)
+        }
+
+        return nil
+    }
+
+    private static func runThreadList(command: ResolvedRunnerCommand) -> Data? {
+        let process = Process()
+        process.executableURL = command.executableURL
+        process.arguments = ["threads", "list", "--json", "--limit", "25"]
+        process.currentDirectoryURL = command.workingDirectoryURL
+        process.standardInput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        let output = Pipe()
+        process.standardOutput = output
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["NO_COLOR"] = "1"
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AmpRunnerAmpCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: cacheURL, withIntermediateDirectories: true)
+        environment["XDG_CACHE_HOME"] = cacheURL.path
+        environment["AMP_LOG_FILE"] = cacheURL.appendingPathComponent("cli.log").path
+        process.environment = environment
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+
+        if process.isRunning {
+            process.terminate()
+            process.waitUntilExit()
+            return nil
+        }
+
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        return output.fileHandleForReading.readDataToEndOfFile()
+    }
+
+    private static func extractJSONData(from data: Data) -> Data? {
+        guard let text = String(data: data, encoding: .utf8),
+              let start = text.firstIndex(where: { $0 == "[" || $0 == "{" }),
+              let end = text.lastIndex(where: { $0 == "]" || $0 == "}" }),
+              start <= end
+        else {
+            return nil
+        }
+        return Data(text[start...end].utf8)
+    }
+
+    private static func normalizedTreePath(_ value: String?) -> String? {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        if let url = URL(string: value), url.isFileURL {
+            return normalizedPath(url.path)
+        }
+        return normalizedPath(value)
+    }
+
+    private static func normalizedPath(_ value: String) -> String {
+        var path = URL(fileURLWithPath: value).standardizedFileURL.path
+        while path.count > 1 && path.hasSuffix("/") {
+            path.removeLast()
+        }
+        return path
     }
 }

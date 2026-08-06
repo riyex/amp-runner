@@ -53,48 +53,119 @@ final class RunnerLogParserTests: XCTestCase {
     // MARK: - Thread lifecycle
 
     func testRunningThreadMeansThreadStarted() {
-        XCTAssertEqual(parser.parse(line: "running thread T-12345"), .threadStarted)
+        XCTAssertEqual(
+            parser.parse(line: "running thread T-12345"),
+            .threadStarted(RunnerThreadDetails(
+                id: "T-12345",
+                webURLString: "https://ampcode.com/threads/T-12345"
+            ))
+        )
     }
 
-    func testCurrentRunningThreadsMessageMeansThreadStarted() {
+    func testCurrentRunningThreadsSummaryDoesNotMeanLocalThreadStarted() {
+        let threadID = "T-00000000-0000-7000-8000-000000000001"
         XCTAssertEqual(
-            parser.parse(line: "16:51:42 Running (4 threads running) https://ampcode.com/threads/T-00000000-0000-7000-8000-000000000001"),
-            .threadStarted
+            parser.parse(line: "16:51:42 Running (4 threads running) https://ampcode.com/threads/\(threadID)"),
+            .unrecognizedLine("16:51:42 Running (4 threads running) https://ampcode.com/threads/\(threadID)")
+        )
+    }
+
+    func testRemoteThreadRequestedMeansThreadStarted() {
+        let threadID = "T-00000000-0000-7000-8000-000000000002"
+        XCTAssertEqual(
+            parser.parse(line: "18:49:59 Remote thread requested https://ampcode.com/threads/\(threadID)"),
+            .threadStarted(RunnerThreadDetails(
+                id: threadID,
+                webURLString: "https://ampcode.com/threads/\(threadID)"
+            ))
+        )
+    }
+
+    func testSleptIdleThreadMeansOnlineWithoutNotification() {
+        let threadID = "T-00000000-0000-7000-8000-000000000002"
+        XCTAssertEqual(
+            parser.parse(line: "18:54:25 Slept idle thread (0 threads running) https://ampcode.com/threads/\(threadID)"),
+            .threadIdle(RunnerThreadDetails(
+                id: threadID,
+                webURLString: "https://ampcode.com/threads/\(threadID)"
+            ))
         )
     }
 
     func testNewThreadMeansThreadStarted() {
-        XCTAssertEqual(parser.parse(line: "Accepted new thread from ampcode.com"), .threadStarted)
+        XCTAssertEqual(
+            parser.parse(line: "Accepted new thread from ampcode.com"),
+            .threadStarted(RunnerThreadDetails())
+        )
     }
 
     func testThreadCompletedMeansThreadFinished() {
-        XCTAssertEqual(parser.parse(line: "thread T-12345 completed"), .threadFinished)
+        XCTAssertEqual(
+            parser.parse(line: "thread T-12345 completed"),
+            .threadFinished(
+                RunnerThreadDetails(
+                    id: "T-12345",
+                    webURLString: "https://ampcode.com/threads/T-12345"
+                ),
+                duration: nil
+            )
+        )
     }
 
     func testFinishedRunningThreadMeansThreadFinished() {
-        XCTAssertEqual(parser.parse(line: "finished running thread T-1"), .threadFinished)
+        XCTAssertEqual(
+            parser.parse(line: "finished running thread T-1"),
+            .threadFinished(
+                RunnerThreadDetails(id: "T-1", webURLString: "https://ampcode.com/threads/T-1"),
+                duration: nil
+            )
+        )
     }
 
     // MARK: - Failure
 
     func testThreadFailedCarriesTheOriginalLine() {
         let line = "thread failed: exit status 1"
-        XCTAssertEqual(parser.parse(line: line), .threadFailed(line))
+        XCTAssertEqual(parser.parse(line: line), .threadFailed(line, thread: nil, duration: nil))
     }
 
     func testGenericErrorLineIsTreatedAsFailure() {
         let line = "ERROR connection refused"
-        XCTAssertEqual(parser.parse(line: line), .threadFailed(line))
+        XCTAssertEqual(parser.parse(line: line), .threadFailed(line, thread: nil, duration: nil))
     }
 
     func testZeroErrorsIsNotAFailure() {
         // Exclusion list keeps benign summary lines from flipping the runner to Error.
-        XCTAssertEqual(parser.parse(line: "thread completed with 0 errors"), .threadFinished)
+        XCTAssertEqual(parser.parse(line: "thread completed with 0 errors"), .threadFinished(nil, duration: nil))
     }
 
     func testFailureMatchersWinOverCompletionMatchers() {
         let line = "thread failed after completed step 3"
-        XCTAssertEqual(parser.parse(line: line), .threadFailed(line))
+        XCTAssertEqual(parser.parse(line: line), .threadFailed(line, thread: nil, duration: nil))
+    }
+
+    func testThreadDetailsMergesCliMetadataOverLogMetadata() {
+        let logDetails = RunnerThreadDetails(
+            id: "T-12345",
+            webURLString: "https://ampcode.com/threads/T-12345"
+        )
+        let metadata = RunnerThreadDetails(
+            id: "T-12345",
+            title: "Core diff code review",
+            treeURLString: "file:///Users/me/Developer/amp-runner",
+            messageCount: 5
+        )
+
+        XCTAssertEqual(
+            logDetails.merging(metadata),
+            RunnerThreadDetails(
+                id: "T-12345",
+                title: "Core diff code review",
+                webURLString: "https://ampcode.com/threads/T-12345",
+                treeURLString: "file:///Users/me/Developer/amp-runner",
+                messageCount: 5
+            )
+        )
     }
 
     // MARK: - Unrecognised
@@ -113,16 +184,18 @@ final class RunnerLogParserTests: XCTestCase {
     // MARK: - Implied status
 
     func testImpliedStatusMapping() {
-        XCTAssertEqual(RunnerEvent.threadStarted.impliedStatus, .working)
-        XCTAssertEqual(RunnerEvent.threadFinished.impliedStatus, .online)
-        XCTAssertEqual(RunnerEvent.threadFailed("boom").impliedStatus, .error("boom"))
+        XCTAssertEqual(RunnerEvent.threadStarted(RunnerThreadDetails()).impliedStatus, .working)
+        XCTAssertEqual(RunnerEvent.threadIdle(nil).impliedStatus, .online)
+        XCTAssertEqual(RunnerEvent.threadFinished(nil, duration: nil).impliedStatus, .online)
+        XCTAssertEqual(RunnerEvent.threadFailed("boom", thread: nil, duration: nil).impliedStatus, .error("boom"))
         XCTAssertEqual(RunnerEvent.statusChanged(.online).impliedStatus, .online)
     }
 
     func testNotifiableEvents() {
-        XCTAssertTrue(RunnerEvent.threadStarted.isNotifiable)
-        XCTAssertTrue(RunnerEvent.threadFinished.isNotifiable)
-        XCTAssertTrue(RunnerEvent.threadFailed("x").isNotifiable)
+        XCTAssertTrue(RunnerEvent.threadStarted(RunnerThreadDetails()).isNotifiable)
+        XCTAssertTrue(RunnerEvent.threadFinished(nil, duration: nil).isNotifiable)
+        XCTAssertTrue(RunnerEvent.threadFailed("x", thread: nil, duration: nil).isNotifiable)
+        XCTAssertFalse(RunnerEvent.threadIdle(nil).isNotifiable)
         XCTAssertFalse(RunnerEvent.statusChanged(.online).isNotifiable)
         XCTAssertFalse(RunnerEvent.unrecognizedLine("x").isNotifiable)
     }
@@ -145,7 +218,7 @@ final class RunnerLogParserTests: XCTestCase {
         let matcher = RunnerLogParser.Matcher(
             phrases: ["thread"],
             excludedPhrases: ["debug"]
-        ) { _ in .threadStarted }
+        ) { _ in .threadStarted(RunnerThreadDetails()) }
         XCTAssertTrue(matcher.matches(lowercasedLine: "starting thread"))
         XCTAssertFalse(matcher.matches(lowercasedLine: "debug: starting thread"))
     }

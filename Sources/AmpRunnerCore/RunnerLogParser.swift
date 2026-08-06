@@ -61,22 +61,50 @@ public struct RunnerLogParser: Sendable {
     /// generic "connected" rule so a line mentioning both is classified correctly.
     public static let defaultMatchers: [Matcher] = [
         // --- Failures -------------------------------------------------------
-        Matcher(phrases: ["thread failed"]) { .threadFailed($0) },
-        Matcher(phrases: ["failed to run thread"]) { .threadFailed($0) },
-        Matcher(phrases: ["error"], excludedPhrases: ["0 errors", "no errors"]) { .threadFailed($0) },
-        Matcher(phrases: ["fatal"]) { .threadFailed($0) },
-        Matcher(phrases: ["panic:"]) { .threadFailed($0) },
+        Matcher(phrases: ["thread failed"]) {
+            .threadFailed($0, thread: RunnerThreadDetails.detected(in: $0), duration: nil)
+        },
+        Matcher(phrases: ["failed to run thread"]) {
+            .threadFailed($0, thread: RunnerThreadDetails.detected(in: $0), duration: nil)
+        },
+        Matcher(phrases: ["error"], excludedPhrases: ["0 errors", "no errors"]) {
+            .threadFailed($0, thread: RunnerThreadDetails.detected(in: $0), duration: nil)
+        },
+        Matcher(phrases: ["fatal"]) {
+            .threadFailed($0, thread: RunnerThreadDetails.detected(in: $0), duration: nil)
+        },
+        Matcher(phrases: ["panic:"]) {
+            .threadFailed($0, thread: RunnerThreadDetails.detected(in: $0), duration: nil)
+        },
 
         // --- Thread lifecycle ----------------------------------------------
-        Matcher(phrases: ["thread", "completed"]) { _ in .threadFinished },
-        Matcher(phrases: ["thread", "finished"]) { _ in .threadFinished },
-        Matcher(phrases: ["finished running thread"]) { _ in .threadFinished },
-        Matcher(phrases: ["thread", "started"]) { _ in .threadStarted },
-        Matcher(phrases: ["running thread"]) { _ in .threadStarted },
-        Matcher(phrases: ["running (", "thread running)", "ampcode.com/threads/"]) { _ in .threadStarted },
-        Matcher(phrases: ["running (", "threads running)", "ampcode.com/threads/"]) { _ in .threadStarted },
-        Matcher(phrases: ["accepted thread"]) { _ in .threadStarted },
-        Matcher(phrases: ["new thread"]) { _ in .threadStarted },
+        Matcher(phrases: ["thread", "completed"]) {
+            .threadFinished(RunnerThreadDetails.detected(in: $0), duration: nil)
+        },
+        Matcher(phrases: ["thread", "finished"]) {
+            .threadFinished(RunnerThreadDetails.detected(in: $0), duration: nil)
+        },
+        Matcher(phrases: ["finished running thread"]) {
+            .threadFinished(RunnerThreadDetails.detected(in: $0), duration: nil)
+        },
+        Matcher(phrases: ["slept idle thread"]) {
+            .threadIdle(RunnerThreadDetails.detected(in: $0))
+        },
+        Matcher(phrases: ["remote thread requested"]) {
+            .threadStarted(RunnerThreadDetails.detected(in: $0) ?? RunnerThreadDetails())
+        },
+        Matcher(phrases: ["thread", "started"]) {
+            .threadStarted(RunnerThreadDetails.detected(in: $0) ?? RunnerThreadDetails())
+        },
+        Matcher(phrases: ["running thread"]) {
+            .threadStarted(RunnerThreadDetails.detected(in: $0) ?? RunnerThreadDetails())
+        },
+        Matcher(phrases: ["accepted thread"]) {
+            .threadStarted(RunnerThreadDetails.detected(in: $0) ?? RunnerThreadDetails())
+        },
+        Matcher(phrases: ["new thread"]) {
+            .threadStarted(RunnerThreadDetails.detected(in: $0) ?? RunnerThreadDetails())
+        },
 
         // --- Connection / idle ----------------------------------------------
         Matcher(phrases: ["registered.", "create threads", "will run here"]) { _ in .statusChanged(.online) },

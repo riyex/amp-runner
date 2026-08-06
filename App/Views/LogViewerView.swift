@@ -37,9 +37,20 @@ struct LogViewerView: View {
                 Spacer()
 
                 if let profile = selectedProfile {
-                    Text(coordinator.status(for: profile).detailedDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(coordinator.status(for: profile).detailedDescription)
+                        if let summary = coordinator.threadSummary(for: profile) {
+                            Text(summary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    if coordinator.threadURLString(for: profile) != nil {
+                        Button("Open Thread") { coordinator.openOnAmpCode(profile) }
+                    }
                 }
             }
 

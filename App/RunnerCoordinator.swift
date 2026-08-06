@@ -11,6 +11,10 @@ enum ProfileDraftRequest: Equatable {
     case duplicate(UUID)
 }
 
+extension Notification.Name {
+    static let ampRunnerOpenSettingsWindow = Notification.Name("com.riyex.amprunner.openSettingsWindow")
+}
+
 /// Owns all profiles and their supervisors, and is the single object the UI observes.
 @MainActor
 final class RunnerCoordinator: ObservableObject {
@@ -69,6 +73,9 @@ final class RunnerCoordinator: ObservableObject {
         self.notifier = notifier ?? RunnerNotifier()
         self.launchAtLogin = launchAtLogin ?? LaunchAtLoginManager()
         self.bookmarks = bookmarks ?? SecurityScopedBookmarkStore()
+        self.notifier.actionHandler = { [weak self] action in
+            self?.handle(notificationAction: action)
+        }
     }
 
     // MARK: - Launch
@@ -126,7 +133,7 @@ final class RunnerCoordinator: ObservableObject {
         supervisor.events
             .sink { [weak self] event in
                 guard let self else { return }
-                self.notifier.notify(event: event, profileName: self.name(of: profileID))
+                self.notifier.notify(event: event, profileID: profileID, profileName: self.name(of: profileID))
             }
             .store(in: &cancellables)
 
@@ -134,7 +141,7 @@ final class RunnerCoordinator: ObservableObject {
         supervisor.$status
             .sink { [weak self] status in
                 guard let self, case .error(let message) = status else { return }
-                self.notifier.notifyRunnerError(profileName: self.name(of: profileID), message: message)
+                self.notifier.notifyRunnerError(profileID: profileID, profileName: self.name(of: profileID), message: message)
             }
             .store(in: &cancellables)
 
@@ -157,6 +164,14 @@ final class RunnerCoordinator: ObservableObject {
 
     func logLines(for profileID: UUID) -> [String] {
         supervisors[profileID]?.logLines ?? []
+    }
+
+    func threadSummary(for profile: RunnerProfile) -> String? {
+        supervisors[profile.id]?.threadSummary
+    }
+
+    func threadURLString(for profile: RunnerProfile) -> String? {
+        supervisors[profile.id]?.threadURLString
     }
 
     // MARK: - Start / stop
@@ -342,9 +357,18 @@ final class RunnerCoordinator: ObservableObject {
         )
     }
 
+    /// Opens the current/last thread when known; otherwise falls back to the runner page.
+    func openOnAmpCode(_ profile: RunnerProfile) {
+        if let threadURLString = threadURLString(for: profile),
+           openURLString(threadURLString) {
+            return
+        }
+        openRunnerOnAmpCode(profile)
+    }
+
     /// Opens the runner's page on ampcode.com. The runner-id query parameter is a
     /// convenience only — ampcode.com is the source of truth for thread routing.
-    func openOnAmpCode(_ profile: RunnerProfile) {
+    func openRunnerOnAmpCode(_ profile: RunnerProfile) {
         var components = URLComponents(string: "https://ampcode.com/threads")
         let runnerID = profile.runnerID.trimmingCharacters(in: .whitespacesAndNewlines)
         if !runnerID.isEmpty {
@@ -352,6 +376,20 @@ final class RunnerCoordinator: ObservableObject {
         }
         guard let url = components?.url else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    func openLogs(profileID: UUID) {
+        logViewerProfileID = profileID
+        settingsPane = .logs
+        NotificationCenter.default.post(name: .ampRunnerOpenSettingsWindow, object: nil)
+        SettingsWindowOpener.activateApp()
+    }
+
+    @discardableResult
+    func openURLString(_ urlString: String) -> Bool {
+        guard let url = URL(string: urlString) else { return false }
+        NSWorkspace.shared.open(url)
+        return true
     }
 
     func revealLogFileInFinder(_ profileID: UUID) {
@@ -372,5 +410,23 @@ final class RunnerCoordinator: ObservableObject {
     /// Terminal equivalent shown in the editor and copied from the menu.
     func commandPreview(for profile: RunnerProfile) -> String {
         RunnerCommandBuilder.commandPreview(for: profile, homeDirectoryPath: homeDirectoryPath)
+    }
+
+    private func handle(notificationAction action: RunnerNotificationAction) {
+        switch action {
+        case .openThread(let profileID, let urlString):
+            if let urlString, openURLString(urlString) {
+                return
+            }
+            if let profileID,
+               let profile = profiles.first(where: { $0.id == profileID }) {
+                openRunnerOnAmpCode(profile)
+                return
+            }
+            _ = openURLString("https://ampcode.com/threads")
+
+        case .viewLogs(let profileID):
+            openLogs(profileID: profileID)
+        }
     }
 }

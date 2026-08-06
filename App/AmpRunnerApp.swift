@@ -18,6 +18,7 @@ struct AmpRunnerApp: App {
             )
         } label: {
             MenuBarLabelView(coordinator: appDelegate.coordinator)
+                .background(SettingsWindowNotificationBridge())
         }
         .menuBarExtraStyle(.menu)
 
@@ -28,6 +29,19 @@ struct AmpRunnerApp: App {
             SettingsRootView(coordinator: appDelegate.coordinator)
         }
         .windowResizability(.contentSize)
+    }
+}
+
+struct SettingsWindowNotificationBridge: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onReceive(NotificationCenter.default.publisher(for: .ampRunnerOpenSettingsWindow)) { _ in
+                openWindow(id: SettingsWindowOpener.windowID)
+                SettingsWindowOpener.activateApp()
+            }
     }
 }
 

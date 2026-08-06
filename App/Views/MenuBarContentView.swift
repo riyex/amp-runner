@@ -99,11 +99,21 @@ struct MenuBarContentView: View {
                 Button("Start") { startFromMenu(profile) }
             }
 
+            if let summary = coordinator.threadSummary(for: profile) {
+                Divider()
+                Text(summary)
+            }
+
             Divider()
 
             Button("Open Folder in Finder") { coordinator.revealWorkingDirectoryInFinder(profile) }
             Button("Open Folder in Terminal") { coordinator.openWorkingDirectoryInTerminal(profile) }
-            Button("Open on ampcode.com") { coordinator.openOnAmpCode(profile) }
+            if coordinator.threadURLString(for: profile) != nil {
+                Button("Open Current Thread on ampcode.com") { coordinator.openOnAmpCode(profile) }
+                Button("Open Runner on ampcode.com") { coordinator.openRunnerOnAmpCode(profile) }
+            } else {
+                Button("Open on ampcode.com") { coordinator.openRunnerOnAmpCode(profile) }
+            }
 
             Divider()
 
