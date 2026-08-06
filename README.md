@@ -115,16 +115,26 @@ Linux plumbing, but the project does not currently claim Linux compatibility.
 Notifications for thread start / finish / failure and a **Start Amp Runner at Login**
 toggle are both in the menu.
 
+The Settings window has one global **Environment** tab for every profile. Its ordered user
+directories are prepended to the runner `PATH`, followed by the app-inherited `PATH` entries
+and existing conventional developer and system directories. Amp Runner normalizes and
+deduplicates those entries. It preserves a missing absolute user directory and warns about
+it, but does not save empty, relative, or colon-containing entries. A changed `PATH` applies
+when a profile starts or restarts; a running process keeps the environment it received when
+it launched.
+
 ## Credentials
 
 **Amp Runner never reads, stores, exports, or logs your credentials.** There is no
 Keychain usage for secrets anywhere in the codebase. Atlassian refresh tokens, OAuth
-tokens, and Git/SSH credentials are never touched. The only thing persisted is Amp
-Runner's own non-secret configuration — profile names, runner IDs, paths, arguments, and
-flags — as JSON at `~/Library/Application Support/AmpRunner/profiles.json`.
+tokens, and Git/SSH credentials are never touched. Amp Runner persists only its own
+non-secret settings. Profiles are stored as JSON at
+`~/Library/Application Support/AmpRunner/profiles.json`, and global user-added `PATH`
+directories in macOS preferences.
 
-The `amp` process Amp Runner starts reaches its own credentials through your normal app
-environment. Amp Runner also never runs as root and installs no daemon or privileged
+Amp Runner does not execute a login shell or source shell startup files, so it does not
+promise complete Terminal-environment parity. It offers no arbitrary environment-variable
+or secrets support. Amp Runner also never runs as root and installs no daemon or privileged
 helper; everything runs in your logged-in user session.
 
 ## Distribution

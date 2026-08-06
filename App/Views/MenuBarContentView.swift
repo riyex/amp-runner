@@ -5,6 +5,7 @@ import AmpRunnerCore
 /// Which pane the Settings window should show when it is next opened from the menu.
 enum SettingsPane: Hashable {
     case profiles
+    case environment
     case logs
 }
 
@@ -66,6 +67,7 @@ struct MenuBarContentView: View {
         Divider()
 
         Button("Manage Profiles…") { open(.profiles, draft: .none) }
+        Button("Environment…") { open(.environment, draft: .none) }
         Button("Check Amp Settings") { checkAmpSettings() }
 
         Toggle("Start Amp Runner at Login", isOn: launchAtLoginBinding)

@@ -196,6 +196,10 @@ struct SettingsRootView: View {
                 .tabItem { Label("Profiles", systemImage: "list.bullet") }
                 .tag(SettingsPane.profiles)
 
+            EnvironmentSettingsView(coordinator: coordinator)
+                .tabItem { Label("Environment", systemImage: "terminal") }
+                .tag(SettingsPane.environment)
+
             LogViewerView(coordinator: coordinator)
                 .tabItem { Label("Logs", systemImage: "text.alignleft") }
                 .tag(SettingsPane.logs)

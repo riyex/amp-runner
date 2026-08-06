@@ -38,6 +38,8 @@ tests macOS only. Everything that can be decided without a window lives there:
 - `RunnerLogParser` — the heuristic log-line matcher table.
 - `RunnerProfileStore` — JSON persistence behind an injectable `ProfileStoreFileIO`
   protocol, including the duplicate-working-directory rule.
+- `RunnerPathSettings` — global ordered user directories and deterministic `PATH`
+  resolution.
 - `AmpSettingsChecker` — reads and merges `amp.remoteThreadCreation.enabled` from
   settings-file *contents* passed in as `Data`, never from a hardcoded path.
 
@@ -46,6 +48,19 @@ tests macOS only. Everything that can be decided without a window lives there:
 stdout/stderr back to the app's pipes, watches the app PID, and forwards SIGINT followed
 by SIGTERM if the app disappears. It exists because a normal child process is reparented
 when a parent app is killed by Xcode or crashes.
+
+The Settings window has one global **Environment** tab, shared by all profiles. Its ordered
+user directories are prepended to `PATH`; app-inherited entries follow, then existing
+conventional developer and system directories. Resolution normalizes and stably
+deduplicates entries. Missing absolute user directories remain in the setting and produce a
+warning, while empty, relative, and colon-containing entries are invalid and are not saved.
+The resolved `PATH` is captured when a profile starts or restarts, so changing the setting
+does not alter a running process. That same launch snapshot is passed to the monitor helper
+and Amp, and is retained for Amp metadata subprocesses.
+
+Amp Runner directly launches its processes; it does not execute a login shell or source
+shell startup files. It therefore does not promise complete Terminal-environment parity or
+support arbitrary environment variables or secrets.
 
 The point is testability. Because none of this touches a UI framework, the core and
 monitor-support tests run from SwiftPM on macOS without opening Xcode, and the parts that
@@ -182,11 +197,11 @@ These properties are non-negotiable and are implemented literally.
    and argument list. "Don't ask again" is a deliberate per-profile opt-out, not the
    default.
 3. **No credential storage, ever.** The app persists only its own non-secret
-   configuration — name, runner ID, paths, arguments, flags — as JSON at
-   `~/Library/Application Support/AmpRunner/profiles.json`. There is no Keychain usage for
-   secrets anywhere in the codebase. Atlassian refresh tokens, Git/SSH credentials, and
-   OAuth tokens are never read, stored, exported, or logged. The monitored `amp` process
-   reaches its own credentials through the app environment, and Amp Runner never sees them.
+   configuration: profiles as JSON at
+   `~/Library/Application Support/AmpRunner/profiles.json`, and global user-added `PATH`
+   directories in macOS preferences. There is no Keychain usage for secrets anywhere in
+   the codebase. Atlassian refresh tokens, Git/SSH credentials, and OAuth tokens are never
+   read, stored, exported, or logged. Amp Runner does not provide secrets support.
 4. **Never root, never a daemon.** Everything runs in the logged-in user's GUI session.
    There is no privileged helper, no `launchd` daemon, and no `setuid` anything. This is
    also why login-at-start registers exactly one item — the app itself, via

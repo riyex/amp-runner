@@ -61,6 +61,43 @@ final class RunnerProcessLauncherTests: XCTestCase {
         XCTAssertEqual(status, 7)
     }
 
+    func testNativeMonitorChildInheritsMonitorEnvironment() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let variableName = "AMP_RUNNER_PATH_TEST"
+        let value = "monitor-environment-\(UUID().uuidString)"
+        let previousValue = getenv(variableName).map { String(cString: $0) }
+        setenv(variableName, value, 1)
+        defer {
+            if let previousValue {
+                setenv(variableName, previousValue, 1)
+            } else {
+                unsetenv(variableName)
+            }
+        }
+
+        let configuration = RunnerProcessMonitorConfiguration(
+            parentProcessID: ProcessInfo.processInfo.processIdentifier,
+            pollInterval: 0.05,
+            shutdownTimeout: 0.2,
+            executableURL: URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-c", "printf %s \"$AMP_RUNNER_PATH_TEST\""],
+            workingDirectoryURL: root
+        )
+
+        let output = Pipe()
+        let status = RunnerProcessMonitor(configuration: configuration).run(
+            standardOutput: output.fileHandleForWriting,
+            standardError: FileHandle.nullDevice
+        )
+        try output.fileHandleForWriting.close()
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        XCTAssertEqual(String(decoding: data, as: UTF8.self), value)
+        XCTAssertEqual(status, 0)
+    }
+
     func testNativeMonitorTerminatesChildWhenWatchedParentExits() throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

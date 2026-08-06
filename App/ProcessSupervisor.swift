@@ -32,6 +32,7 @@ final class ProcessSupervisor: ObservableObject {
 
     private let parser: RunnerLogParser
     private let homeDirectoryPath: String
+    private let environmentProvider: () -> [String: String]
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -40,18 +41,21 @@ final class ProcessSupervisor: ObservableObject {
     private var escalationTask: Task<Void, Never>?
     private var logFileHandle: FileHandle?
     private var runningCommand: ResolvedRunnerCommand?
+    private var runningEnvironment: [String: String]?
     private var metadataTask: Task<RunnerThreadDetails?, Never>?
     private var metadataRequestID: UUID?
 
     init(
         profile: RunnerProfile,
         parser: RunnerLogParser = RunnerLogParser(),
-        homeDirectoryPath: String = FileManager.default.homeDirectoryForCurrentUser.path
+        homeDirectoryPath: String = FileManager.default.homeDirectoryForCurrentUser.path,
+        environmentProvider: @escaping () -> [String: String] = { ProcessInfo.processInfo.environment }
     ) {
         self.profileID = profile.id
         self.profile = profile
         self.parser = parser
         self.homeDirectoryPath = homeDirectoryPath
+        self.environmentProvider = environmentProvider
     }
 
     var isRunning: Bool { process?.isRunning ?? false }
@@ -117,14 +121,15 @@ final class ProcessSupervisor: ObservableObject {
             parentProcessID: ProcessInfo.processInfo.processIdentifier,
             shutdownTimeoutSeconds: Self.gracefulShutdownTimeout
         )
+        let launchEnvironment = environmentProvider()
 
         let process = Process()
         process.executableURL = launchPlan.executableURL
         process.arguments = launchPlan.arguments
         process.currentDirectoryURL = command.workingDirectoryURL
-        // The helper inherits the app environment and starts Amp directly. It exists only
-        // to forward stops and kill Amp if the app is killed before normal cleanup runs.
-        process.environment = ProcessInfo.processInfo.environment
+        // The helper and Amp share one environment snapshot for this launch. The helper
+        // exists only to forward stops and kill Amp if the app is killed before normal cleanup runs.
+        process.environment = launchEnvironment
 
         let out = Pipe()
         let err = Pipe()
@@ -154,12 +159,14 @@ final class ProcessSupervisor: ObservableObject {
         } catch {
             out.fileHandleForReading.readabilityHandler = nil
             err.fileHandleForReading.readabilityHandler = nil
+            runningEnvironment = nil
             closeLogFile()
             setStatus(.error("Failed to launch: \(error.localizedDescription)"))
             return
         }
 
         runningCommand = command
+        runningEnvironment = launchEnvironment
 
         self.process = process
         self.stdoutPipe = out
@@ -419,7 +426,7 @@ final class ProcessSupervisor: ObservableObject {
     }
 
     private func scheduleMetadataRefresh(for thread: RunnerThreadDetails) {
-        guard let runningCommand else { return }
+        guard let runningCommand, let runningEnvironment else { return }
 
         metadataTask?.cancel()
         let requestID = UUID()
@@ -428,7 +435,8 @@ final class ProcessSupervisor: ObservableObject {
         let task = Task.detached(priority: .utility) {
             AmpThreadMetadataFetcher.fetchMatchingThread(
                 observed: thread,
-                command: runningCommand
+                command: runningCommand,
+                environment: runningEnvironment
             )
         }
         metadataTask = task
@@ -459,6 +467,7 @@ final class ProcessSupervisor: ObservableObject {
         stderrPipe = nil
         process = nil
         runningCommand = nil
+        runningEnvironment = nil
         metadataTask?.cancel()
         metadataRequestID = nil
 
@@ -573,9 +582,10 @@ private enum AmpThreadMetadataFetcher {
 
     static func fetchMatchingThread(
         observed: RunnerThreadDetails,
-        command: ResolvedRunnerCommand
+        command: ResolvedRunnerCommand,
+        environment: [String: String]
     ) -> RunnerThreadDetails? {
-        guard let data = runThreadList(command: command),
+        guard let data = runThreadList(command: command, environment: environment),
               let jsonData = extractJSONData(from: data),
               let entries = try? JSONDecoder().decode([AmpThreadListEntry].self, from: jsonData)
         else {
@@ -595,7 +605,10 @@ private enum AmpThreadMetadataFetcher {
         return nil
     }
 
-    private static func runThreadList(command: ResolvedRunnerCommand) -> Data? {
+    private static func runThreadList(
+        command: ResolvedRunnerCommand,
+        environment: [String: String]
+    ) -> Data? {
         let process = Process()
         process.executableURL = command.executableURL
         process.arguments = ["threads", "list", "--json", "--limit", "25"]
@@ -606,14 +619,14 @@ private enum AmpThreadMetadataFetcher {
         let output = Pipe()
         process.standardOutput = output
 
-        var environment = ProcessInfo.processInfo.environment
-        environment["NO_COLOR"] = "1"
+        var metadataEnvironment = environment
+        metadataEnvironment["NO_COLOR"] = "1"
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("AmpRunnerAmpCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheURL, withIntermediateDirectories: true)
-        environment["XDG_CACHE_HOME"] = cacheURL.path
-        environment["AMP_LOG_FILE"] = cacheURL.appendingPathComponent("cli.log").path
-        process.environment = environment
+        metadataEnvironment["XDG_CACHE_HOME"] = cacheURL.path
+        metadataEnvironment["AMP_LOG_FILE"] = cacheURL.appendingPathComponent("cli.log").path
+        process.environment = metadataEnvironment
 
         do {
             try process.run()

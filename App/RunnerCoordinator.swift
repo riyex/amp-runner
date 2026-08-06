@@ -22,6 +22,7 @@ final class RunnerCoordinator: ObservableObject {
     @Published private(set) var profiles: [RunnerProfile] = []
     @Published private(set) var supervisors: [UUID: ProcessSupervisor] = [:]
     @Published private(set) var loadError: String?
+    @Published private(set) var pathSettings: RunnerPathSettings
 
     /// Result of inspecting `~/.config/amp/settings.json` at launch.
     @Published private(set) var ampSettingsResult: AmpSettingsChecker.Result = .missingFile
@@ -44,7 +45,11 @@ final class RunnerCoordinator: ObservableObject {
     let bookmarks: SecurityScopedBookmarkStore
 
     private let store: RunnerProfileStore
+    private let pathSettingsStore: RunnerPathSettingsStore
     private let homeDirectoryPath: String
+    private let inheritedEnvironment: [String: String]
+    private var pathSettingsLoadError: String?
+    private var profileLoadError: String?
     private var subscriptions: [UUID: Set<AnyCancellable>] = [:]
 
     struct PendingStart: Identifiable {
@@ -56,6 +61,8 @@ final class RunnerCoordinator: ObservableObject {
     init(
         homeDirectoryPath: String = FileManager.default.homeDirectoryForCurrentUser.path,
         store: RunnerProfileStore? = nil,
+        pathSettingsStore: RunnerPathSettingsStore? = nil,
+        inheritedEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         notifier: RunnerNotifier? = nil,
         launchAtLogin: LaunchAtLoginManager? = nil,
         bookmarks: SecurityScopedBookmarkStore? = nil
@@ -70,9 +77,19 @@ final class RunnerCoordinator: ObservableObject {
             fileURL: RunnerProfileStore.defaultFileURL(homeDirectoryPath: homeDirectoryPath),
             io: FileManagerProfileStoreIO()
         )
+        let resolvedPathSettingsStore = pathSettingsStore ?? RunnerPathSettingsStore()
+        self.pathSettingsStore = resolvedPathSettingsStore
+        self.inheritedEnvironment = inheritedEnvironment
+        do {
+            self.pathSettings = try resolvedPathSettingsStore.load()
+        } catch {
+            self.pathSettings = RunnerPathSettings()
+            self.pathSettingsLoadError = "Could not read PATH settings: \(error.localizedDescription)"
+        }
         self.notifier = notifier ?? RunnerNotifier()
         self.launchAtLogin = launchAtLogin ?? LaunchAtLoginManager()
         self.bookmarks = bookmarks ?? SecurityScopedBookmarkStore()
+        recomputeLoadError()
         self.notifier.actionHandler = { [weak self] action in
             self?.handle(notificationAction: action)
         }
@@ -97,14 +114,20 @@ final class RunnerCoordinator: ObservableObject {
     private func reload() {
         do {
             profiles = try store.load()
-            loadError = nil
+            profileLoadError = nil
         } catch {
             profiles = []
-            loadError = "Could not read saved profiles: \(error.localizedDescription)"
+            profileLoadError = "Could not read saved profiles: \(error.localizedDescription)"
         }
+        recomputeLoadError()
         for profile in profiles {
             supervisor(for: profile).update(profile: profile)
         }
+    }
+
+    private func recomputeLoadError() {
+        let errors = [pathSettingsLoadError, profileLoadError].compactMap { $0 }
+        loadError = errors.isEmpty ? nil : errors.joined(separator: "\n")
     }
 
     private func startAutoStartProfiles() {
@@ -124,7 +147,13 @@ final class RunnerCoordinator: ObservableObject {
             return existing
         }
 
-        let supervisor = ProcessSupervisor(profile: profile, homeDirectoryPath: homeDirectoryPath)
+        let supervisor = ProcessSupervisor(
+            profile: profile,
+            homeDirectoryPath: homeDirectoryPath,
+            environmentProvider: { [weak self, fallbackEnvironment = inheritedEnvironment] in
+                self?.runnerEnvironment() ?? fallbackEnvironment
+            }
+        )
         supervisors[profile.id] = supervisor
 
         let profileID = profile.id
@@ -227,6 +256,35 @@ final class RunnerCoordinator: ObservableObject {
         for supervisor in supervisors.values where supervisor.isRunning {
             supervisor.stop()
         }
+    }
+
+    // MARK: - Runner PATH
+
+    func savePathDirectories(_ directories: [String]) throws {
+        let settings = RunnerPathSettings(userDirectories: directories)
+        try pathSettingsStore.save(settings)
+        pathSettings = settings
+        pathSettingsLoadError = nil
+        recomputeLoadError()
+    }
+
+    func resolvedRunnerPath(for directories: [String]? = nil) -> ResolvedRunnerPath {
+        RunnerPathResolver.resolve(
+            settings: RunnerPathSettings(userDirectories: directories ?? pathSettings.userDirectories),
+            inheritedPath: inheritedEnvironment["PATH"],
+            homeDirectoryPath: homeDirectoryPath,
+            directoryExists: { path in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            }
+        )
+    }
+
+    func runnerEnvironment() -> [String: String] {
+        var environment = inheritedEnvironment
+        environment["PATH"] = resolvedRunnerPath().path
+        return environment
     }
 
     // MARK: - CRUD
