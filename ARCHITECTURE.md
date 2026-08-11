@@ -203,12 +203,12 @@ These properties are non-negotiable and are implemented literally.
    the codebase. Atlassian refresh tokens, Git/SSH credentials, and OAuth tokens are never
    read, stored, exported, or logged. Amp Runner does not provide secrets support.
 4. **Never root, never a daemon.** Everything runs in the logged-in user's GUI session.
-   There is no privileged helper, no `launchd` daemon, and no `setuid` anything. This is
-   also why login-at-start registers exactly one item — the app itself, via
-   `SMAppService.mainApp` — instead of a `LaunchAgent` per profile: per-profile agents
-   would run `amp` outside the user's session with a stripped environment, which is
-   precisely the failure mode this design exists to avoid. The app starts `autoStart`
-   profiles itself after launching.
+   There is no privileged helper, no `launchd` daemon, and no `setuid` anything. The
+   login-at-start toggle registers exactly one app-level LaunchAgent, via
+   `SMAppService.agent(plistName:)`, instead of a `LaunchAgent` per profile: per-profile
+   agents would duplicate runner ownership outside the app's supervision model. The
+   app-level LaunchAgent lets `launchd` restart Amp Runner after an unsuccessful exit,
+   while the app still starts `autoStart` profiles itself after launching.
 5. **One profile, one isolated directory.** `RunnerProfileStore.validate` rejects any save
    where two profiles resolve to the same working directory (compared on standardised
    paths, so `/a/b`, `/a/b/`, and `/a/./b` collide) or share a runner ID. This matches

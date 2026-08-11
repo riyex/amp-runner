@@ -5,11 +5,14 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-./Scripts/generate_project.sh
-
 ARCHIVE_PATH="${ARCHIVE_PATH:-$PWD/build/AmpRunner.xcarchive}"
 CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:-Developer ID Application}"
 : "${DEVELOPMENT_TEAM:?Set DEVELOPMENT_TEAM to your Apple Developer Team ID.}"
+
+BUILD_NUMBER=$(./Scripts/increment_build_number.sh project.yml)
+echo "Building release $BUILD_NUMBER"
+
+./Scripts/generate_project.sh
 
 xcodebuild \
     -project AmpRunner.xcodeproj \
@@ -20,6 +23,7 @@ xcodebuild \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     archive
 
 APP="$ARCHIVE_PATH/Products/Applications/AmpRunner.app"

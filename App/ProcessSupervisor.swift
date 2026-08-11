@@ -39,11 +39,14 @@ final class ProcessSupervisor: ObservableObject {
     private var stdoutRemainder = Data()
     private var stderrRemainder = Data()
     private var escalationTask: Task<Void, Never>?
+    private var restartTask: Task<Void, Never>?
     private var logFileHandle: FileHandle?
     private var runningCommand: ResolvedRunnerCommand?
     private var runningEnvironment: [String: String]?
     private var metadataTask: Task<RunnerThreadDetails?, Never>?
     private var metadataRequestID: UUID?
+    private var restartPolicy = RunnerRestartPolicy()
+    private var isStoppingIntentionally = false
 
     init(
         profile: RunnerProfile,
@@ -74,7 +77,17 @@ final class ProcessSupervisor: ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
+        start(resetRestartPolicy: true)
+    }
+
+    private func start(resetRestartPolicy: Bool) {
+        restartTask?.cancel()
+        restartTask = nil
         guard !isRunning else { return }
+        isStoppingIntentionally = false
+        if resetRestartPolicy {
+            restartPolicy.reset()
+        }
 
         let command: ResolvedRunnerCommand
         do {
@@ -178,7 +191,12 @@ final class ProcessSupervisor: ObservableObject {
     /// SIGINT first so `amp` can run its own graceful shutdown (it prompts about
     /// in-flight threads), escalating to SIGTERM only if it does not exit in time.
     func stop() {
+        restartTask?.cancel()
+        restartTask = nil
+        isStoppingIntentionally = true
+
         guard let process, process.isRunning else {
+            isStoppingIntentionally = false
             setStatus(.stopped)
             return
         }
@@ -457,6 +475,8 @@ final class ProcessSupervisor: ObservableObject {
     }
 
     private func handleTermination(reason: Process.TerminationReason, exitCode: Int32) {
+        let stoppedIntentionally = isStoppingIntentionally
+        isStoppingIntentionally = false
         escalationTask?.cancel()
         escalationTask = nil
 
@@ -471,20 +491,51 @@ final class ProcessSupervisor: ObservableObject {
         metadataTask?.cancel()
         metadataRequestID = nil
 
-        // Exit-code detection is authoritative and always overrides the log heuristics.
+        let terminationMessage: String
+        let isAbnormalExit: Bool
         if reason == .uncaughtSignal {
-            append(logLine: "[amp-runner] process terminated by signal \(exitCode)")
-            setStatus(.stopped)
+            terminationMessage = "process terminated by signal \(exitCode)"
+            isAbnormalExit = true
         } else if exitCode == 0 {
-            append(logLine: "[amp-runner] process exited cleanly")
-            setStatus(.stopped)
+            terminationMessage = "process exited cleanly"
+            isAbnormalExit = false
         } else {
-            append(logLine: "[amp-runner] process exited with code \(exitCode)")
-            setStatus(.error("exit code \(exitCode)"))
+            terminationMessage = "process exited with code \(exitCode)"
+            isAbnormalExit = true
+        }
+
+        append(logLine: "[amp-runner] \(terminationMessage)")
+        if stoppedIntentionally {
+            restartPolicy.reset()
+            setStatus(.stopped)
+        } else if isAbnormalExit {
+            scheduleRestart(afterAbnormalExit: terminationMessage)
+        } else {
+            restartPolicy.reset()
+            setStatus(.stopped)
         }
         activeThread = nil
         activeThreadStartedAt = nil
         closeLogFile()
+    }
+
+    private func scheduleRestart(afterAbnormalExit terminationMessage: String) {
+        switch restartPolicy.recordAbnormalExit() {
+        case .restart(let delay, let attempt):
+            let delayDescription = Self.formattedDuration(delay)
+            append(logLine: "[amp-runner] restarting in \(delayDescription) after abnormal exit (attempt \(attempt))")
+            setStatus(.error("\(terminationMessage); restarting in \(delayDescription)"))
+            restartTask?.cancel()
+            restartTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                self?.start(resetRestartPolicy: false)
+            }
+
+        case .stop(let message):
+            append(logLine: "[amp-runner] \(message); not restarting")
+            setStatus(.error("\(message); \(terminationMessage)"))
+        }
     }
 
     private func flushRemainders() {

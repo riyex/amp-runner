@@ -50,11 +50,35 @@ targetTemplates:
     type: application
     platform: macOS
     deploymentTarget: "14.0"
+    preBuildScripts:
+      - name: Copy LaunchAgent plist
+        inputFiles:
+          - "$(SRCROOT)/App/Resources/com.riyex.amprunner.agent.plist"
+        outputFiles:
+          - "$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Contents/Library/LaunchAgents/com.riyex.amprunner.agent.plist"
+        script: |
+          set -euo pipefail
+          launch_agent_dir="${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Contents/Library/LaunchAgents"
+          mkdir -p "${launch_agent_dir}"
+          cp "${SRCROOT}/App/Resources/com.riyex.amprunner.agent.plist" "${launch_agent_dir}/com.riyex.amprunner.agent.plist"
+    postBuildScripts:
+      - name: Stamp Debug Build Number
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - "$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"
+        script: |
+          set -eu
+          if [ "${CONFIGURATION}" = "Debug" ]; then
+            build_number=$(date -u +%Y%m%d.%H%M%S)
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${build_number}" \
+              "${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          fi
     sources:
       - path: App
         excludes:
           - "Resources/Info.plist"
           - "Resources/*.entitlements"
+          - "Resources/com.riyex.amprunner.agent.plist"
     dependencies:
       - package: AmpRunnerCore
         product: AmpRunnerCore

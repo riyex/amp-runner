@@ -49,18 +49,10 @@ struct SettingsWindowNotificationBridge: View {
 struct MenuBarLabelView: View {
     @ObservedObject var coordinator: RunnerCoordinator
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(
-            .animation(
-                minimumInterval: 1.0 / 15.0,
-                paused: aggregateStatus != .working || reduceMotion
-            )
-        ) { context in
-            Image(nsImage: renderedIcon(at: context.date))
-                .accessibilityLabel("Amp Runner: \(aggregateStatus.accessibilityDescription)")
-        }
+        MenuBarStatusImage(status: aggregateStatus, colorScheme: colorScheme)
+            .equatable()
     }
 
     private var aggregateStatus: RunnerAggregateStatus {
@@ -68,35 +60,32 @@ struct MenuBarLabelView: View {
             for: coordinator.profiles.map { coordinator.status(for: $0) }
         )
     }
+}
 
-    private func renderedIcon(at date: Date) -> NSImage {
+private struct MenuBarStatusImage: View, Equatable {
+    let status: RunnerAggregateStatus
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        Image(nsImage: renderedIcon())
+            .accessibilityLabel("Amp Runner: \(status.accessibilityDescription)")
+    }
+
+    private func renderedIcon() -> NSImage {
         let renderer = ImageRenderer(
             content: MenuBarStatusArtwork(
-                status: aggregateStatus,
-                colorScheme: colorScheme,
-                workingPulseOpacity: workingPulseOpacity(at: date)
+                status: status,
+                colorScheme: colorScheme
             )
         )
         renderer.scale = 2
         return renderer.nsImage ?? NSImage(size: NSSize(width: 17, height: 18))
-    }
-
-    private func workingPulseOpacity(at date: Date) -> Double {
-        guard aggregateStatus == .working, !reduceMotion else { return 0.1 }
-        let halfCycle = 1.4
-        let elapsed = date.timeIntervalSinceReferenceDate
-            .truncatingRemainder(dividingBy: halfCycle * 2)
-        let progress = elapsed <= halfCycle
-            ? elapsed / halfCycle
-            : 2 - elapsed / halfCycle
-        return 0.1 + (0.18 * progress)
     }
 }
 
 private struct MenuBarStatusArtwork: View {
     let status: RunnerAggregateStatus
     let colorScheme: ColorScheme
-    let workingPulseOpacity: Double
 
     var body: some View {
         HStack(spacing: 3) {
@@ -133,7 +122,7 @@ private struct MenuBarStatusArtwork: View {
         case .working:
             ZStack {
                 Circle()
-                    .fill(mintColor.opacity(workingPulseOpacity))
+                    .fill(mintColor.opacity(0.2))
                     .frame(width: 12, height: 12)
                 Circle()
                     .fill(mintColor)
@@ -163,6 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let coordinator = RunnerCoordinator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !Self.terminateIfDuplicateInstance() else { return }
         // Belt and braces: Info.plist sets LSUIElement, but setting the policy here too
         // means a build launched directly from Xcode still behaves as an accessory app.
         NSApp.setActivationPolicy(.accessory)
@@ -176,6 +166,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Menu-bar-only app: closing the Settings window must not quit.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    private static func terminateIfDuplicateInstance() -> Bool {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return false }
+
+        let currentBundleURL = Bundle.main.bundleURL.standardizedFileURL
+        let currentProcessID = ProcessInfo.processInfo.processIdentifier
+        let olderMatchingInstanceExists = NSWorkspace.shared.runningApplications.contains { application in
+            application.bundleIdentifier == bundleIdentifier
+                && application.bundleURL?.standardizedFileURL == currentBundleURL
+                && application.processIdentifier > 0
+                && application.processIdentifier < currentProcessID
+        }
+
+        if olderMatchingInstanceExists {
+            NSApp.terminate(nil)
+        }
+        return olderMatchingInstanceExists
     }
 }
 
