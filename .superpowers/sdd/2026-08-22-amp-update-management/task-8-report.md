@@ -58,3 +58,14 @@ Implemented the five-pane toolbar `TabView` in the required order: General, Runn
 - `xcodebuild ... -scheme AmpRunner ... CODE_SIGNING_ALLOWED=NO build` — succeeded.
 - `xcodebuild ... -scheme AmpRunner-AppStore ... CODE_SIGNING_ALLOWED=NO build` — succeeded.
 - Source self-review confirmed the five-pane toolbar order, independent notification preference, bounded/truncatable errors with full text help, explicit working-runner confirmation, and aggregate menu behavior remain intact.
+
+## Round 2 fix
+
+- Added guarded bidirectional synchronization between `SettingsRootView.selectedPane` and `RunnerCoordinator.settingsPane`. Manual toolbar selection now updates the coordinator, while menu-driven coordinator changes still select the requested pane without feedback loops.
+- Self-reviewed the regression sequence: Updates menu request selects Updates; manually selecting General writes General to the coordinator; a later Updates request changes the coordinator from General to Updates, which triggers the view selection update.
+
+## Round 2 verification
+
+- `swift test` — 150 tests, 0 failures.
+- `xcodebuild ... -scheme AmpRunner ... CODE_SIGNING_ALLOWED=NO build` — succeeded.
+- `xcodebuild ... -scheme AmpRunner-AppStore ... CODE_SIGNING_ALLOWED=NO build` — succeeded.

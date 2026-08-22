@@ -228,11 +228,20 @@ struct SettingsRootView: View {
             )
         }
         .onAppear {
-            selectedPane = coordinator.settingsPane
+            if selectedPane != coordinator.settingsPane {
+                selectedPane = coordinator.settingsPane
+            }
             coordinator.launchAtLogin.refresh()
         }
         .onChange(of: coordinator.settingsPane) { _, pane in
-            selectedPane = pane
+            if selectedPane != pane {
+                selectedPane = pane
+            }
+        }
+        .onChange(of: selectedPane) { _, pane in
+            if coordinator.settingsPane != pane {
+                coordinator.settingsPane = pane
+            }
         }
     }
 }
