@@ -144,11 +144,18 @@ final class AmpUpdateController: ObservableObject {
         }
     }
 
-    func installedVersion(for executableURL: URL) async -> AmpVersion? {
-        await probeVersion(for: executableURL, force: false)
+    func installedVersion(
+        for executableURL: URL,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) async -> AmpVersion? {
+        await probeVersion(for: executableURL, environment: environment, force: false)
     }
 
-    private func probeVersion(for executableURL: URL, force: Bool) async -> AmpVersion? {
+    private func probeVersion(
+        for executableURL: URL,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        force: Bool
+    ) async -> AmpVersion? {
         let url = executableURL.standardizedFileURL
         let path = url.path
         let identity = readIdentity(url)
@@ -169,7 +176,7 @@ final class AmpUpdateController: ObservableObject {
                 let request = AmpCommandRequest(
                     executableURL: url,
                     arguments: ["version"],
-                    environment: ProcessInfo.processInfo.environment,
+                    environment: environment,
                     timeout: 5,
                     outputLimit: 64 * 1_024
                 )

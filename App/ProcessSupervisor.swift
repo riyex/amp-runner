@@ -2,6 +2,8 @@ import Foundation
 import Combine
 import AmpRunnerCore
 
+typealias AmpVersionProvider = (ResolvedRunnerCommand, [String: String]) async -> AmpVersion?
+
 /// Supervises exactly one `amp --no-tui` process for one profile.
 ///
 /// Two independent sources of truth feed `status`:
@@ -23,6 +25,7 @@ final class ProcessSupervisor: ObservableObject {
     @Published private(set) var activeThreadStartedAt: Date?
     @Published private(set) var lastCompletedThread: RunnerThreadDetails?
     @Published private(set) var lastThreadDuration: TimeInterval?
+    @Published private(set) var runningAmpVersion: AmpVersion?
 
     let profileID: UUID
     private(set) var profile: RunnerProfile
@@ -33,12 +36,15 @@ final class ProcessSupervisor: ObservableObject {
     private let parser: RunnerLogParser
     private let homeDirectoryPath: String
     private let environmentProvider: () -> [String: String]
+    private let versionProvider: AmpVersionProvider
+    private let monitorExecutableURL: URL
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
     private var stdoutRemainder = Data()
     private var stderrRemainder = Data()
     private var escalationTask: Task<Void, Never>?
+    private var launchTask: Task<Void, Never>?
     private var restartTask: Task<Void, Never>?
     private var logFileHandle: FileHandle?
     private var runningCommand: ResolvedRunnerCommand?
@@ -52,13 +58,17 @@ final class ProcessSupervisor: ObservableObject {
         profile: RunnerProfile,
         parser: RunnerLogParser = RunnerLogParser(),
         homeDirectoryPath: String = FileManager.default.homeDirectoryForCurrentUser.path,
-        environmentProvider: @escaping () -> [String: String] = { ProcessInfo.processInfo.environment }
+        environmentProvider: @escaping () -> [String: String] = { ProcessInfo.processInfo.environment },
+        versionProvider: @escaping AmpVersionProvider = { _, _ in nil },
+        monitorExecutableURL: URL? = nil
     ) {
         self.profileID = profile.id
         self.profile = profile
         self.parser = parser
         self.homeDirectoryPath = homeDirectoryPath
         self.environmentProvider = environmentProvider
+        self.versionProvider = versionProvider
+        self.monitorExecutableURL = monitorExecutableURL ?? Self.bundledMonitorExecutableURL()
     }
 
     var isRunning: Bool { process?.isRunning ?? false }
@@ -81,9 +91,9 @@ final class ProcessSupervisor: ObservableObject {
     }
 
     private func start(resetRestartPolicy: Bool) {
+        guard !isRunning, launchTask == nil else { return }
         restartTask?.cancel()
         restartTask = nil
-        guard !isRunning else { return }
         isStoppingIntentionally = false
         if resetRestartPolicy {
             restartPolicy.reset()
@@ -110,6 +120,25 @@ final class ProcessSupervisor: ObservableObject {
             return
         }
 
+        let launchEnvironment = environmentProvider()
+        runningAmpVersion = nil
+        setStatus(.starting)
+
+        let versionProvider = versionProvider
+        launchTask = Task { @MainActor [weak self] in
+            let version = await versionProvider(command, launchEnvironment)
+            guard let self, !Task.isCancelled else { return }
+            self.launchTask = nil
+            self.launch(command: command, environment: launchEnvironment, version: version)
+        }
+    }
+
+    private func launch(
+        command: ResolvedRunnerCommand,
+        environment launchEnvironment: [String: String],
+        version: AmpVersion?
+    ) {
+        guard !isStoppingIntentionally, !isRunning else { return }
         stdoutRemainder = Data()
         stderrRemainder = Data()
         logLines.removeAll(keepingCapacity: true)
@@ -121,7 +150,7 @@ final class ProcessSupervisor: ObservableObject {
         metadataRequestID = nil
         openLogFile()
 
-        let monitorExecutableURL = Self.monitorExecutableURL()
+        let monitorExecutableURL = monitorExecutableURL
         guard FileManager.default.isExecutableFile(atPath: monitorExecutableURL.path) else {
             closeLogFile()
             setStatus(.error("Monitor helper is missing: \(monitorExecutableURL.path)"))
@@ -134,8 +163,6 @@ final class ProcessSupervisor: ObservableObject {
             parentProcessID: ProcessInfo.processInfo.processIdentifier,
             shutdownTimeoutSeconds: Self.gracefulShutdownTimeout
         )
-        let launchEnvironment = environmentProvider()
-
         let process = Process()
         process.executableURL = launchPlan.executableURL
         process.arguments = launchPlan.arguments
@@ -173,6 +200,7 @@ final class ProcessSupervisor: ObservableObject {
             out.fileHandleForReading.readabilityHandler = nil
             err.fileHandleForReading.readabilityHandler = nil
             runningEnvironment = nil
+            runningAmpVersion = nil
             closeLogFile()
             setStatus(.error("Failed to launch: \(error.localizedDescription)"))
             return
@@ -180,23 +208,26 @@ final class ProcessSupervisor: ObservableObject {
 
         runningCommand = command
         runningEnvironment = launchEnvironment
+        runningAmpVersion = version
 
         self.process = process
         self.stdoutPipe = out
         self.stderrPipe = err
         append(logLine: "[amp-runner] equivalent terminal command: " + RunnerCommandBuilder.commandPreview(for: command))
-        setStatus(.starting)
     }
 
     /// SIGINT first so `amp` can run its own graceful shutdown (it prompts about
     /// in-flight threads), escalating to SIGTERM only if it does not exit in time.
     func stop() {
+        launchTask?.cancel()
+        launchTask = nil
         restartTask?.cancel()
         restartTask = nil
         isStoppingIntentionally = true
 
         guard let process, process.isRunning else {
             isStoppingIntentionally = false
+            runningAmpVersion = nil
             setStatus(.stopped)
             return
         }
@@ -222,12 +253,15 @@ final class ProcessSupervisor: ObservableObject {
 
     private func restartAfterStop() {
         stop()
-        Task { @MainActor [weak self] in
+        guard restartTask == nil else { return }
+        restartTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let deadline = Date().addingTimeInterval(Self.gracefulShutdownTimeout + 4)
             while self.isRunning && Date() < deadline {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
+            guard !Task.isCancelled else { return }
+            self.restartTask = nil
             self.start()
         }
     }
@@ -238,7 +272,7 @@ final class ProcessSupervisor: ObservableObject {
         process.terminate()
     }
 
-    private static func monitorExecutableURL() -> URL {
+    private static func bundledMonitorExecutableURL() -> URL {
         Bundle.main.bundleURL
             .appendingPathComponent("Contents", isDirectory: true)
             .appendingPathComponent("Helpers", isDirectory: true)
@@ -488,6 +522,7 @@ final class ProcessSupervisor: ObservableObject {
         process = nil
         runningCommand = nil
         runningEnvironment = nil
+        runningAmpVersion = nil
         metadataTask?.cancel()
         metadataRequestID = nil
 

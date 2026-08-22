@@ -8,7 +8,7 @@ import Foundation
 public enum RunnerStatus: Equatable, Hashable, Sendable {
     /// No process is running.
     case stopped
-    /// The process was spawned but has not yet reported that it is connected.
+    /// A launch is probing its Amp version, or the spawned process has not yet connected.
     case starting
     /// Connected to ampcode.com and waiting for remote threads.
     case online

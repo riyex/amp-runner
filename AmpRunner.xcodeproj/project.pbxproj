@@ -24,6 +24,7 @@
 		37AE4AC5EAFA72F48F7CA85F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B99613250014A596B8AF80 /* main.swift */; };
 		476F897AA3EA445284DA2499 /* AmpUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F6F5306F16D96B410137D1 /* AmpUpdateController.swift */; };
 		581D0556259650A7038479F1 /* AmpUpdateControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */; };
+		581D0556259650A7038479F2 /* ProcessSupervisorVersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC5440DF13B3E0EC1BBD7BA /* ProcessSupervisorVersionTests.swift */; };
 		6B71978562E46A0BD5E6948F /* RunnerCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B77A4534C9C1091AC379451E /* RunnerCoordinator.swift */; };
 		8AB0982C6E0EE0B7B87BBB0B /* ProfileListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */; };
 		8BBBEE0BD0B12925BFFE7C94 /* AmpRunnerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */; };
@@ -110,6 +111,7 @@
 		68D555C47FE6F749518E5649 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		69188BDA6C26624B251A71A9 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 		6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpUpdateControllerTests.swift; sourceTree = "<group>"; };
+		6FC5440DF13B3E0EC1BBD7BA /* ProcessSupervisorVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessSupervisorVersionTests.swift; sourceTree = "<group>"; };
 		76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpCommandExecutorTests.swift; sourceTree = "<group>"; };
 		76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpRunnerApp.swift; sourceTree = "<group>"; };
 		77AFCE9E4D63ED4483053CF3 /* AmpRunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AmpRunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -179,6 +181,7 @@
 			children = (
 				76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */,
 				6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */,
+				6FC5440DF13B3E0EC1BBD7BA /* ProcessSupervisorVersionTests.swift */,
 			);
 			path = AmpRunnerAppTests;
 			sourceTree = "<group>";
@@ -584,6 +587,7 @@
 			files = (
 				98F34F6D0A4534050D101453 /* AmpCommandExecutorTests.swift in Sources */,
 				581D0556259650A7038479F1 /* AmpUpdateControllerTests.swift in Sources */,
+				581D0556259650A7038479F2 /* ProcessSupervisorVersionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -43,6 +43,7 @@ final class RunnerCoordinator: ObservableObject {
     let notifier: RunnerNotifier
     let launchAtLogin: LaunchAtLoginManager
     let bookmarks: SecurityScopedBookmarkStore
+    let ampUpdateController: AmpUpdateController
 
     private let store: RunnerProfileStore
     private let pathSettingsStore: RunnerPathSettingsStore
@@ -51,6 +52,7 @@ final class RunnerCoordinator: ObservableObject {
     private var pathSettingsLoadError: String?
     private var profileLoadError: String?
     private var subscriptions: [UUID: Set<AnyCancellable>] = [:]
+    private var updateControllerSubscription: AnyCancellable?
 
     struct PendingStart: Identifiable {
         let id: UUID
@@ -65,7 +67,8 @@ final class RunnerCoordinator: ObservableObject {
         inheritedEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         notifier: RunnerNotifier? = nil,
         launchAtLogin: LaunchAtLoginManager? = nil,
-        bookmarks: SecurityScopedBookmarkStore? = nil
+        bookmarks: SecurityScopedBookmarkStore? = nil,
+        ampUpdateController: AmpUpdateController? = nil
     ) {
         // Defaults are constructed here, inside the (already @MainActor) initializer body,
         // rather than as parameter default-value expressions. `RunnerNotifier`,
@@ -89,7 +92,10 @@ final class RunnerCoordinator: ObservableObject {
         self.notifier = notifier ?? RunnerNotifier()
         self.launchAtLogin = launchAtLogin ?? LaunchAtLoginManager()
         self.bookmarks = bookmarks ?? SecurityScopedBookmarkStore()
+        self.ampUpdateController = ampUpdateController ?? AmpUpdateController()
         recomputeLoadError()
+        updateControllerSubscription = self.ampUpdateController.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
         self.notifier.actionHandler = { [weak self] action in
             self?.handle(notificationAction: action)
         }
@@ -105,7 +111,7 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     func onTerminate() {
-        for supervisor in supervisors.values where supervisor.isRunning {
+        for supervisor in supervisors.values {
             supervisor.stop()
         }
         bookmarks.stopAccessingAll()
@@ -123,6 +129,7 @@ final class RunnerCoordinator: ObservableObject {
         for profile in profiles {
             supervisor(for: profile).update(profile: profile)
         }
+        synchronizeAmpExecutables()
     }
 
     private func recomputeLoadError() {
@@ -152,6 +159,13 @@ final class RunnerCoordinator: ObservableObject {
             homeDirectoryPath: homeDirectoryPath,
             environmentProvider: { [weak self, fallbackEnvironment = inheritedEnvironment] in
                 self?.runnerEnvironment() ?? fallbackEnvironment
+            },
+            versionProvider: { [weak self] command, environment in
+                guard let self else { return nil }
+                return await self.ampUpdateController.installedVersion(
+                    for: command.executableURL,
+                    environment: environment
+                )
             }
         )
         supervisors[profile.id] = supervisor
@@ -253,7 +267,7 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     func stopAll() {
-        for supervisor in supervisors.values where supervisor.isRunning {
+        for supervisor in supervisors.values {
             supervisor.stop()
         }
     }
@@ -266,6 +280,7 @@ final class RunnerCoordinator: ObservableObject {
         pathSettings = settings
         pathSettingsLoadError = nil
         recomputeLoadError()
+        synchronizeAmpExecutables()
     }
 
     func resolvedRunnerPath(for directories: [String]? = nil) -> ResolvedRunnerPath {
@@ -293,6 +308,7 @@ final class RunnerCoordinator: ObservableObject {
         try RunnerProfileStore.validateCandidate(profile, against: profiles)
         profiles = try store.upsert(profile, into: profiles)
         supervisor(for: profile).update(profile: profile)
+        synchronizeAmpExecutables()
     }
 
     /// Returns an unsaved copy for the editor. Nothing is persisted until the user picks
@@ -316,6 +332,18 @@ final class RunnerCoordinator: ObservableObject {
         subscriptions.removeValue(forKey: profile.id)
         bookmarks.removeBookmark(profileID: profile.id)
         profiles = try store.delete(id: profile.id, from: profiles)
+        synchronizeAmpExecutables()
+    }
+
+    private func synchronizeAmpExecutables() {
+        let registrations = profiles.compactMap { profile -> AmpExecutableRegistration? in
+            guard let command = try? RunnerCommandBuilder.resolve(
+                profile: profile,
+                homeDirectoryPath: homeDirectoryPath
+            ) else { return nil }
+            return AmpExecutableRegistration(executableURL: command.executableURL)
+        }
+        ampUpdateController.synchronizeExecutables(registrations)
     }
 
     /// A blank profile for the editor. The working directory is intentionally empty so
