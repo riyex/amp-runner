@@ -28,7 +28,7 @@ final class AmpUpdateNotificationPolicyTests: XCTestCase {
 
     func testRestartEventIsAggregatedPerInstalledVersionAndUsesAutomaticWording() {
         let input = AmpUpdateNotificationInput(
-            installedBatchVersion: v2, outdatedExecutableCount: 0, affectedRunnerCount: 4,
+            installedBatchVersion: v2, installedBatchIdentity: "batch-1", outdatedExecutableCount: 0, affectedRunnerCount: 4,
             restartRequiredRunnerCount: 4, idleRunnerCount: 1, workingRunnerCount: 2,
             automaticallyRestartsWhenIdle: true
         )
@@ -38,6 +38,27 @@ final class AmpUpdateNotificationPolicyTests: XCTestCase {
             version: v2, runnerCount: 4, idleCount: 1, workingCount: 2, automaticallyRestartsWhenIdle: true
         )])
         XCTAssertEqual(result.ledger.lastRestartRequiredVersion, v2)
+    }
+
+    func testDistinctMixedVersionBatchIsNotSuppressedByPreviouslyNotifiedDisplayVersion() {
+        let input = AmpUpdateNotificationInput(
+            installedBatchVersion: v2, installedBatchIdentity: "batch-2",
+            outdatedExecutableCount: 0, affectedRunnerCount: 3,
+            restartRequiredRunnerCount: 3, idleRunnerCount: 2, workingRunnerCount: 1,
+            automaticallyRestartsWhenIdle: false
+        )
+        let ledger = AmpUpdateNotificationLedger(
+            lastRestartRequiredVersion: v2,
+            lastRestartRequiredBatchIdentity: "batch-1"
+        )
+
+        let first = AmpUpdateNotificationPolicy.evaluate(input: input, notificationsEnabled: true, ledger: ledger)
+        XCTAssertEqual(first.events, [.restartRequired(
+            version: v2, runnerCount: 3, idleCount: 2, workingCount: 1, automaticallyRestartsWhenIdle: false
+        )])
+        XCTAssertTrue(AmpUpdateNotificationPolicy.evaluate(
+            input: input, notificationsEnabled: true, ledger: first.ledger
+        ).events.isEmpty)
     }
 
     func testDisabledNotificationsProduceNoEventsAndDoNotAdvanceLedger() {

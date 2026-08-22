@@ -86,6 +86,7 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
     private static let openUpdatesActionID = "com.riyex.amprunner.notification.action.openUpdates"
     private static let lastUpdateAvailableVersionKey = "com.riyex.amprunner.notification.lastUpdateAvailableVersion"
     private static let lastRestartRequiredVersionKey = "com.riyex.amprunner.notification.lastRestartRequiredVersion"
+    private static let lastRestartRequiredBatchIdentityKey = "com.riyex.amprunner.notification.lastRestartRequiredBatchIdentity"
     private static let profileIDUserInfoKey = "profileID"
     private static let threadURLUserInfoKey = "threadURL"
 
@@ -113,7 +114,8 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
     func notifyUpdates(input: AmpUpdateNotificationInput, enabled: Bool) {
         let ledger = AmpUpdateNotificationLedger(
             lastUpdateAvailableVersion: defaults.string(forKey: Self.lastUpdateAvailableVersionKey).flatMap(AmpVersion.init),
-            lastRestartRequiredVersion: defaults.string(forKey: Self.lastRestartRequiredVersionKey).flatMap(AmpVersion.init)
+            lastRestartRequiredVersion: defaults.string(forKey: Self.lastRestartRequiredVersionKey).flatMap(AmpVersion.init),
+            lastRestartRequiredBatchIdentity: defaults.string(forKey: Self.lastRestartRequiredBatchIdentityKey)
         )
         let result = AmpUpdateNotificationPolicy.evaluate(input: input, notificationsEnabled: enabled, ledger: ledger)
         if let version = result.ledger.lastUpdateAvailableVersion {
@@ -121,6 +123,9 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
         }
         if let version = result.ledger.lastRestartRequiredVersion {
             defaults.set(version.description, forKey: Self.lastRestartRequiredVersionKey)
+        }
+        if let identity = result.ledger.lastRestartRequiredBatchIdentity {
+            defaults.set(identity, forKey: Self.lastRestartRequiredBatchIdentityKey)
         }
         for event in result.events {
             let request = RunnerUpdateNotificationBuilder.build(event)

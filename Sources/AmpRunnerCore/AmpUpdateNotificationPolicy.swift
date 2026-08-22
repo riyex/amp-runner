@@ -1,6 +1,7 @@
 public struct AmpUpdateNotificationInput: Equatable, Sendable {
     public let latestVersion: AmpVersion?
     public let installedBatchVersion: AmpVersion?
+    public let installedBatchIdentity: String?
     public let outdatedExecutableCount: Int
     public let affectedRunnerCount: Int
     public let restartRequiredRunnerCount: Int
@@ -11,6 +12,7 @@ public struct AmpUpdateNotificationInput: Equatable, Sendable {
     public init(
         latestVersion: AmpVersion? = nil,
         installedBatchVersion: AmpVersion? = nil,
+        installedBatchIdentity: String? = nil,
         outdatedExecutableCount: Int,
         affectedRunnerCount: Int,
         restartRequiredRunnerCount: Int,
@@ -20,6 +22,7 @@ public struct AmpUpdateNotificationInput: Equatable, Sendable {
     ) {
         self.latestVersion = latestVersion
         self.installedBatchVersion = installedBatchVersion
+        self.installedBatchIdentity = installedBatchIdentity
         self.outdatedExecutableCount = outdatedExecutableCount
         self.affectedRunnerCount = affectedRunnerCount
         self.restartRequiredRunnerCount = restartRequiredRunnerCount
@@ -32,10 +35,16 @@ public struct AmpUpdateNotificationInput: Equatable, Sendable {
 public struct AmpUpdateNotificationLedger: Equatable, Sendable {
     public var lastUpdateAvailableVersion: AmpVersion?
     public var lastRestartRequiredVersion: AmpVersion?
+    public var lastRestartRequiredBatchIdentity: String?
 
-    public init(lastUpdateAvailableVersion: AmpVersion? = nil, lastRestartRequiredVersion: AmpVersion? = nil) {
+    public init(
+        lastUpdateAvailableVersion: AmpVersion? = nil,
+        lastRestartRequiredVersion: AmpVersion? = nil,
+        lastRestartRequiredBatchIdentity: String? = nil
+    ) {
         self.lastUpdateAvailableVersion = lastUpdateAvailableVersion
         self.lastRestartRequiredVersion = lastRestartRequiredVersion
+        self.lastRestartRequiredBatchIdentity = lastRestartRequiredBatchIdentity
     }
 }
 
@@ -82,7 +91,7 @@ public enum AmpUpdateNotificationPolicy {
         }
         if let installed = input.installedBatchVersion,
            input.restartRequiredRunnerCount > 0,
-           installed != ledger.lastRestartRequiredVersion {
+           input.installedBatchIdentity != ledger.lastRestartRequiredBatchIdentity {
             events.append(.restartRequired(
                 version: installed,
                 runnerCount: input.restartRequiredRunnerCount,
@@ -91,6 +100,7 @@ public enum AmpUpdateNotificationPolicy {
                 automaticallyRestartsWhenIdle: input.automaticallyRestartsWhenIdle
             ))
             updatedLedger.lastRestartRequiredVersion = installed
+            updatedLedger.lastRestartRequiredBatchIdentity = input.installedBatchIdentity
         }
         return AmpUpdateNotificationResult(events: events, ledger: updatedLedger)
     }

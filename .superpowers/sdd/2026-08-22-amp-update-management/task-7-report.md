@@ -46,3 +46,12 @@ The Updates pane UI is scheduled for Task 8. Task 7 adds the `.updates` routing 
 - GREEN: focused hosted notification/controller/orchestration tests passed (35 tests); `swift test` passed (149 tests); `git diff --check` passed.
 - Self-review: notification identity remains the actual updated version, profile counts are path-joined from the completed batch, and one policy evaluation produces at most one aggregate restart notification. Porcelain remains authoritative with no post-install probe; notification preference and delivery state remain independent.
 - Deferred as requested: version-regression dedupe and broader integration cleanup (Low findings).
+
+## Fix Round 2
+
+- Restart notification dedupe now uses the completed batch timestamp identity rather than the representative maximum version; the representative version remains display-only and no executable paths are persisted.
+- Added mixed-version coverage proving a new batch still emits one aggregate notification when its maximum version was already notified, while repeated evaluation of that exact batch is suppressed.
+- Added a narrow coordinator operation seam and proof that the `.installUpdate` notification action invokes installation of all outdated executables.
+- RED: core tests rejected the missing batch identity API, and hosted tests rejected the missing coordinator installation seam.
+- GREEN: focused hosted notification/orchestration tests passed; `swift test` passed 150 tests; `git diff --check` passed.
+- Persistent dedupe remains advanced independently of delivery authorization/result, and update notifications remain aggregate and free of profile/thread metadata.

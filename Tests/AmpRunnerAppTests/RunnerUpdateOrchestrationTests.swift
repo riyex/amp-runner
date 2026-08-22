@@ -18,10 +18,13 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         XCTAssertEqual(fixture.updateRequests.count, 1)
 
         fixture.installed[fixture.path] = AmpVersion("2.0.0")
-        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
+        let batch = AmpInstallBatch(completedAt: Date(), results: [
+            .init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))
+        ])
+        fixture.installCompletions.send(batch)
         XCTAssertEqual(fixture.updateRequests.count, 2)
         XCTAssertEqual(fixture.updateRequests.last?.body, "2 runners need a restart: 1 idle, 1 working.")
-        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
+        fixture.installCompletions.send(batch)
         XCTAssertEqual(fixture.updateRequests.count, 2)
     }
 
@@ -40,6 +43,29 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         ])
 
         XCTAssertEqual(fixture.updateRequests.map(\.body), ["1 runner needs a restart: 1 idle, 0 working."])
+    }
+
+    @MainActor
+    func testMixedVersionBatchEmitsOnceWhenRepresentativeVersionWasPreviouslyNotified() throws {
+        let fixture = try Fixture(sharedExecutable: false)
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.installed[fixture.secondPath] = AmpVersion("1.5.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.snapshots[fixture.second.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
+        let mixedBatch = AmpInstallBatch(completedAt: Date(timeIntervalSinceReferenceDate: 42), results: [
+            .init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!)),
+            .init(path: fixture.secondPath, state: .succeeded(AmpVersion("1.5.0")!), outcome: .updated(AmpVersion("1.5.0")!))
+        ])
+
+        fixture.installCompletions.send(mixedBatch)
+        fixture.installCompletions.send(mixedBatch)
+
+        XCTAssertEqual(fixture.updateRequests.map(\.body), [
+            "1 runner needs a restart: 1 idle, 0 working.",
+            "2 runners need a restart: 1 idle, 1 working."
+        ])
     }
 
     @MainActor
@@ -192,6 +218,16 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
     }
 
     @MainActor
+    func testInstallUpdateNotificationActionInstallsAllOutdatedExecutables() throws {
+        var installAllCallCount = 0
+        let fixture = try Fixture(installOutdatedExecutables: { installAllCallCount += 1 })
+
+        fixture.coordinator.notifier.handleUpdateAction(.installUpdate)
+
+        XCTAssertEqual(installAllCallCount, 1)
+    }
+
+    @MainActor
     func testPublishedNewRunningVersionClearsInFlightAndRestartRequirement() throws {
         let fixture = try Fixture()
         fixture.installed[fixture.path] = AmpVersion("2.0.0")
@@ -287,7 +323,8 @@ private final class Fixture {
         preferencesStore suppliedStore: AmpUpdatePreferencesStore? = nil,
         controller: AmpUpdateController? = nil,
         sharedExecutable: Bool = true,
-        savePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil
+        savePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil,
+        installOutdatedExecutables: (() -> Void)? = nil
     ) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -337,7 +374,8 @@ private final class Fixture {
             supervisorChanges: changes.eraseToAnyPublisher(),
             installCompletions: installCompletions.eraseToAnyPublisher(),
             applyUpdatePreferences: { [weak self] value in self?.appliedPreferences.append(value) },
-            saveUpdatePreferences: savePreferences
+            saveUpdatePreferences: savePreferences,
+            installOutdatedExecutables: installOutdatedExecutables
         )
     }
 

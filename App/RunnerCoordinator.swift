@@ -72,6 +72,7 @@ final class RunnerCoordinator: ObservableObject {
     private let restartUpdatedRunner: ((UUID) -> Void)?
     private let applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)?
     private let saveUpdatePreferencesOverride: ((AmpUpdatePreferences) throws -> Void)?
+    private let installOutdatedExecutables: () -> Void
 
     struct PendingStart: Identifiable {
         let id: UUID
@@ -94,7 +95,8 @@ final class RunnerCoordinator: ObservableObject {
         supervisorChanges: AnyPublisher<Void, Never>? = nil,
         installCompletions: AnyPublisher<AmpInstallBatch, Never>? = nil,
         applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)? = nil,
-        saveUpdatePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil
+        saveUpdatePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil,
+        installOutdatedExecutables: (() -> Void)? = nil
     ) {
         // Defaults are constructed here, inside the (already @MainActor) initializer body,
         // rather than as parameter default-value expressions. `RunnerNotifier`,
@@ -130,7 +132,11 @@ final class RunnerCoordinator: ObservableObject {
         self.notifier = notifier ?? RunnerNotifier()
         self.launchAtLogin = launchAtLogin ?? LaunchAtLoginManager()
         self.bookmarks = bookmarks ?? SecurityScopedBookmarkStore()
-        self.ampUpdateController = ampUpdateController ?? AmpUpdateController()
+        let resolvedUpdateController = ampUpdateController ?? AmpUpdateController()
+        self.ampUpdateController = resolvedUpdateController
+        self.installOutdatedExecutables = installOutdatedExecutables ?? {
+            Task { await resolvedUpdateController.installOutdatedExecutables() }
+        }
         recomputeLoadError()
         updateControllerSubscription = self.ampUpdateController.objectWillChange
             .sink { [weak self] _ in
@@ -463,9 +469,7 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     func installAvailableUpdate() {
-        Task { [weak self] in
-            await self?.ampUpdateController.installOutdatedExecutables()
-        }
+        installOutdatedExecutables()
     }
 
     func restartToUpdate(_ profile: RunnerProfile) {
@@ -539,6 +543,7 @@ final class RunnerCoordinator: ObservableObject {
         notifier.notifyUpdates(input: AmpUpdateNotificationInput(
             latestVersion: latest,
             installedBatchVersion: installedBatchVersion,
+            installedBatchIdentity: completedBatch.map { String($0.completedAt.timeIntervalSinceReferenceDate) },
             outdatedExecutableCount: outdatedPaths.count,
             affectedRunnerCount: outdatedProfiles.count,
             restartRequiredRunnerCount: restartSources.count,
