@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		023C0F171F0D2B9F80B39F6F /* ProcessSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1277F831EBF46C01F7855683 /* ProcessSupervisor.swift */; };
 		053AE2C91F48C933A0BB5FCA /* ProfileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B99C9E4D20EA6093628E900F /* ProfileEditorView.swift */; };
+		0953DD1A441D7DDB9AA97841 /* AmpUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F6F5306F16D96B410137D1 /* AmpUpdateController.swift */; };
 		09F3376350CA6683A5440210 /* EnvironmentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */; };
 		146028EDADDDE4B2F391B3B8 /* RunnerNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A6C10F3B2C793571179C94 /* RunnerNotifier.swift */; };
 		19C2027CE1933C3354C2222D /* AmpRunnerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 76C5150D90B0542DC543EBCE /* AmpRunnerCore */; };
@@ -21,6 +22,8 @@
 		34B269EE535502749168B0B2 /* SecurityScopedBookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */; };
 		35EE6E9CCBC2A20F0C747D58 /* EnvironmentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */; };
 		37AE4AC5EAFA72F48F7CA85F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B99613250014A596B8AF80 /* main.swift */; };
+		476F897AA3EA445284DA2499 /* AmpUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F6F5306F16D96B410137D1 /* AmpUpdateController.swift */; };
+		581D0556259650A7038479F1 /* AmpUpdateControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */; };
 		6B71978562E46A0BD5E6948F /* RunnerCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B77A4534C9C1091AC379451E /* RunnerCoordinator.swift */; };
 		8AB0982C6E0EE0B7B87BBB0B /* ProfileListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */; };
 		8BBBEE0BD0B12925BFFE7C94 /* AmpRunnerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */; };
@@ -106,6 +109,7 @@
 		66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileListView.swift; sourceTree = "<group>"; };
 		68D555C47FE6F749518E5649 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		69188BDA6C26624B251A71A9 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
+		6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpUpdateControllerTests.swift; sourceTree = "<group>"; };
 		76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpCommandExecutorTests.swift; sourceTree = "<group>"; };
 		76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpRunnerApp.swift; sourceTree = "<group>"; };
 		77AFCE9E4D63ED4483053CF3 /* AmpRunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AmpRunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -113,6 +117,7 @@
 		7F2E679658F56B41A5DB4DFF /* AmpCommandExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpCommandExecutor.swift; sourceTree = "<group>"; };
 		81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentSettingsView.swift; sourceTree = "<group>"; };
 		8F7474B2E55BCAF4B6E972CE /* AmpRunner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AmpRunner.entitlements; sourceTree = "<group>"; };
+		A0F6F5306F16D96B410137D1 /* AmpUpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpUpdateController.swift; sourceTree = "<group>"; };
 		A1AB5EBC6543493CAD0990EB /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
 		AB8FDEBE21F4E3EA970E0FAA /* ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ARCHITECTURE.md; sourceTree = "<group>"; };
 		AF447E482BEEC48CD3319EA0 /* LogViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogViewerView.swift; sourceTree = "<group>"; };
@@ -173,6 +178,7 @@
 			isa = PBXGroup;
 			children = (
 				76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */,
+				6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */,
 			);
 			path = AmpRunnerAppTests;
 			sourceTree = "<group>";
@@ -255,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				7F2E679658F56B41A5DB4DFF /* AmpCommandExecutor.swift */,
+				A0F6F5306F16D96B410137D1 /* AmpUpdateController.swift */,
 			);
 			path = Updates;
 			sourceTree = "<group>";
@@ -527,6 +534,7 @@
 			files = (
 				2387B905ADC6325A9FCECC2F /* AmpCommandExecutor.swift in Sources */,
 				347AF39175C64A0168B3C07C /* AmpRunnerApp.swift in Sources */,
+				0953DD1A441D7DDB9AA97841 /* AmpUpdateController.swift in Sources */,
 				09F3376350CA6683A5440210 /* EnvironmentSettingsView.swift in Sources */,
 				FEE499EA7F8E1D8047030CA5 /* LaunchAtLoginManager.swift in Sources */,
 				B4B1BBEC01033AFB70C47B15 /* LogViewerView.swift in Sources */,
@@ -555,6 +563,7 @@
 			files = (
 				CDB313B46EA0F37999B0690A /* AmpCommandExecutor.swift in Sources */,
 				8BBBEE0BD0B12925BFFE7C94 /* AmpRunnerApp.swift in Sources */,
+				476F897AA3EA445284DA2499 /* AmpUpdateController.swift in Sources */,
 				35EE6E9CCBC2A20F0C747D58 /* EnvironmentSettingsView.swift in Sources */,
 				24AD7A8E6740E4B1A0696FD8 /* LaunchAtLoginManager.swift in Sources */,
 				1ABB3C5C0478661CED30D482 /* LogViewerView.swift in Sources */,
@@ -574,6 +583,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				98F34F6D0A4534050D101453 /* AmpCommandExecutorTests.swift in Sources */,
+				581D0556259650A7038479F1 /* AmpUpdateControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
