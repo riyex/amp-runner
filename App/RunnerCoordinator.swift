@@ -15,6 +15,15 @@ extension Notification.Name {
     static let ampRunnerOpenSettingsWindow = Notification.Name("com.riyex.amprunner.openSettingsWindow")
 }
 
+struct RunnerUpdateStateSource {
+    let status: RunnerStatus
+    let hasActiveThread: Bool
+    let runningVersion: AmpVersion?
+    let installedVersion: AmpVersion?
+    let latestVersion: AmpVersion?
+    let installState: AmpExecutableInstallState?
+}
+
 /// Owns all profiles and their supervisors, and is the single object the UI observes.
 @MainActor
 final class RunnerCoordinator: ObservableObject {
@@ -23,6 +32,9 @@ final class RunnerCoordinator: ObservableObject {
     @Published private(set) var supervisors: [UUID: ProcessSupervisor] = [:]
     @Published private(set) var loadError: String?
     @Published private(set) var pathSettings: RunnerPathSettings
+    @Published private(set) var updatePreferences: AmpUpdatePreferences
+    @Published private(set) var queuedUpdateRestartProfileIDs: Set<UUID> = []
+    @Published private(set) var updateRestartProfileIDsInFlight: Set<UUID> = []
 
     /// Result of inspecting `~/.config/amp/settings.json` at launch.
     @Published private(set) var ampSettingsResult: AmpSettingsChecker.Result = .missingFile
@@ -47,12 +59,18 @@ final class RunnerCoordinator: ObservableObject {
 
     private let store: RunnerProfileStore
     private let pathSettingsStore: RunnerPathSettingsStore
+    private let ampUpdatePreferencesStore: AmpUpdatePreferencesStore
     private let homeDirectoryPath: String
     private let inheritedEnvironment: [String: String]
     private var pathSettingsLoadError: String?
     private var profileLoadError: String?
+    private var updatePreferencesLoadError: String?
     private var subscriptions: [UUID: Set<AnyCancellable>] = [:]
     private var updateControllerSubscription: AnyCancellable?
+    private var updateOrchestrationSubscriptions = Set<AnyCancellable>()
+    private let injectedUpdateStateSource: ((RunnerProfile) -> RunnerUpdateStateSource)?
+    private let restartUpdatedRunner: ((UUID) -> Void)?
+    private let applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)?
 
     struct PendingStart: Identifiable {
         let id: UUID
@@ -68,7 +86,13 @@ final class RunnerCoordinator: ObservableObject {
         notifier: RunnerNotifier? = nil,
         launchAtLogin: LaunchAtLoginManager? = nil,
         bookmarks: SecurityScopedBookmarkStore? = nil,
-        ampUpdateController: AmpUpdateController? = nil
+        ampUpdateController: AmpUpdateController? = nil,
+        ampUpdatePreferencesStore: AmpUpdatePreferencesStore? = nil,
+        updateStateSource: ((RunnerProfile) -> RunnerUpdateStateSource)? = nil,
+        restartUpdatedRunner: ((UUID) -> Void)? = nil,
+        supervisorChanges: AnyPublisher<Void, Never>? = nil,
+        installCompletions: AnyPublisher<Void, Never>? = nil,
+        applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)? = nil
     ) {
         // Defaults are constructed here, inside the (already @MainActor) initializer body,
         // rather than as parameter default-value expressions. `RunnerNotifier`,
@@ -82,6 +106,17 @@ final class RunnerCoordinator: ObservableObject {
         )
         let resolvedPathSettingsStore = pathSettingsStore ?? RunnerPathSettingsStore()
         self.pathSettingsStore = resolvedPathSettingsStore
+        let resolvedPreferencesStore = ampUpdatePreferencesStore ?? AmpUpdatePreferencesStore()
+        self.ampUpdatePreferencesStore = resolvedPreferencesStore
+        do {
+            self.updatePreferences = try resolvedPreferencesStore.load()
+        } catch {
+            self.updatePreferences = AmpUpdatePreferences()
+            self.updatePreferencesLoadError = "Could not read Amp update preferences: \(error.localizedDescription)"
+        }
+        self.injectedUpdateStateSource = updateStateSource
+        self.restartUpdatedRunner = restartUpdatedRunner
+        self.applyUpdatePreferences = applyUpdatePreferences
         self.inheritedEnvironment = inheritedEnvironment
         do {
             self.pathSettings = try resolvedPathSettingsStore.load()
@@ -96,6 +131,20 @@ final class RunnerCoordinator: ObservableObject {
         recomputeLoadError()
         updateControllerSubscription = self.ampUpdateController.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
+        (supervisorChanges ?? Empty().eraseToAnyPublisher())
+            .sink { [weak self] in self?.reevaluateUpdateRestarts() }
+            .store(in: &updateOrchestrationSubscriptions)
+        if let installCompletions {
+            installCompletions
+                .sink { [weak self] in self?.handleCompletedInstallBatch() }
+                .store(in: &updateOrchestrationSubscriptions)
+        } else {
+            self.ampUpdateController.$lastCompletedInstallBatch
+                .compactMap { $0 }
+                .sink { [weak self] _ in self?.handleCompletedInstallBatch() }
+                .store(in: &updateOrchestrationSubscriptions)
+        }
+        applyPreferences(updatePreferences)
         self.notifier.actionHandler = { [weak self] action in
             self?.handle(notificationAction: action)
         }
@@ -133,7 +182,7 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     private func recomputeLoadError() {
-        let errors = [pathSettingsLoadError, profileLoadError].compactMap { $0 }
+        let errors = [pathSettingsLoadError, profileLoadError, updatePreferencesLoadError].compactMap { $0 }
         loadError = errors.isEmpty ? nil : errors.joined(separator: "\n")
     }
 
@@ -190,7 +239,13 @@ final class RunnerCoordinator: ObservableObject {
 
         // Re-publish child changes so SwiftUI redraws the menu when a status flips.
         supervisor.objectWillChange
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+                Task { @MainActor [weak self] in
+                    await Task.yield()
+                    self?.reevaluateUpdateRestarts()
+                }
+            }
             .store(in: &cancellables)
 
         subscriptions[profileID] = cancellables
@@ -330,6 +385,8 @@ final class RunnerCoordinator: ObservableObject {
         supervisors[profile.id]?.stop()
         supervisors.removeValue(forKey: profile.id)
         subscriptions.removeValue(forKey: profile.id)
+        queuedUpdateRestartProfileIDs.remove(profile.id)
+        updateRestartProfileIDsInFlight.remove(profile.id)
         bookmarks.removeBookmark(profileID: profile.id)
         profiles = try store.delete(id: profile.id, from: profiles)
         synchronizeAmpExecutables()
@@ -348,6 +405,156 @@ final class RunnerCoordinator: ObservableObject {
             )
         }
         ampUpdateController.synchronizeExecutables(registrations)
+    }
+
+    // MARK: - Amp updates
+
+    func updateState(for profile: RunnerProfile) -> AmpProfileUpdateState {
+        let source = updateSource(for: profile)
+        let installing: Bool
+        let failure: String?
+        switch source.installState {
+        case .installing:
+            installing = true
+            failure = nil
+        case .failed(let message):
+            installing = false
+            failure = message
+        default:
+            installing = false
+            failure = nil
+        }
+        return AmpProfileUpdateState.derive(
+            status: source.status,
+            runningVersion: source.runningVersion,
+            installedVersion: source.installedVersion,
+            latestVersion: source.latestVersion,
+            installationInProgress: installing,
+            installationFailure: failure
+        )
+    }
+
+    func saveUpdatePreferences(_ preferences: AmpUpdatePreferences) throws {
+        try ampUpdatePreferencesStore.save(preferences)
+        updatePreferences = preferences
+        updatePreferencesLoadError = nil
+        recomputeLoadError()
+        applyPreferences(preferences)
+        reevaluateUpdateRestarts()
+    }
+
+    func installAvailableUpdate() {
+        Task { [weak self] in
+            await self?.ampUpdateController.installOutdatedExecutables()
+        }
+    }
+
+    func restartToUpdate(_ profile: RunnerProfile) {
+        let source = updateSource(for: profile)
+        guard source.status.isRunning, requiresRestart(source),
+              !updateRestartProfileIDsInFlight.contains(profile.id) else { return }
+        beginUpdateRestart(profile.id)
+    }
+
+    func restartAllWhenIdle() {
+        queuedUpdateRestartProfileIDs.formUnion(eligibleUpdateRestartProfileIDs())
+        reevaluateUpdateRestarts()
+    }
+
+    /// This operation is invoked only after UI confirmation; unlike queued actions it
+    /// deliberately includes working runners, but never starts a stopped runner.
+    func restartAllNow() {
+        for profile in profiles {
+            let source = updateSource(for: profile)
+            guard source.status.isRunning, requiresRestart(source),
+                  !updateRestartProfileIDsInFlight.contains(profile.id) else { continue }
+            queuedUpdateRestartProfileIDs.remove(profile.id)
+            beginUpdateRestart(profile.id)
+        }
+    }
+
+    private func applyPreferences(_ preferences: AmpUpdatePreferences) {
+        if let applyUpdatePreferences {
+            applyUpdatePreferences(preferences)
+        } else {
+            ampUpdateController.setAutomaticChecksEnabled(preferences.automaticallyChecksForUpdates)
+            ampUpdateController.setAutomaticInstallEnabled(preferences.automaticallyInstallsUpdates)
+        }
+    }
+
+    private func handleCompletedInstallBatch() {
+        guard updatePreferences.restartsUpdatedRunnersWhenIdle else { return }
+        queuedUpdateRestartProfileIDs.formUnion(eligibleUpdateRestartProfileIDs())
+        reevaluateUpdateRestarts()
+    }
+
+    private func eligibleUpdateRestartProfileIDs() -> Set<UUID> {
+        Set(profiles.compactMap { profile in
+            let source = updateSource(for: profile)
+            switch source.status {
+            case .online, .working where requiresRestart(source): return profile.id
+            default: return nil
+            }
+        })
+    }
+
+    private func reevaluateUpdateRestarts() {
+        for profile in profiles where updateRestartProfileIDsInFlight.contains(profile.id) {
+            let source = updateSource(for: profile)
+            if let running = source.runningVersion, let installed = source.installedVersion,
+               running >= installed {
+                updateRestartProfileIDsInFlight.remove(profile.id)
+            }
+        }
+        let snapshots = profiles.map { profile -> AmpRunnerUpdateSnapshot in
+            let source = updateSource(for: profile)
+            return AmpRunnerUpdateSnapshot(
+                profileID: profile.id,
+                status: source.status,
+                hasActiveThread: source.hasActiveThread,
+                runningVersion: source.runningVersion,
+                installedVersion: source.installedVersion,
+                restartInFlight: updateRestartProfileIDsInFlight.contains(profile.id)
+            )
+        }
+        let decision = AmpIdleRestartPolicy.decide(
+            snapshots: snapshots,
+            enabled: true,
+            queuedProfileIDs: queuedUpdateRestartProfileIDs
+        )
+        queuedUpdateRestartProfileIDs = decision.keepQueued
+        for id in decision.restartNow { beginUpdateRestart(id) }
+    }
+
+    private func beginUpdateRestart(_ profileID: UUID) {
+        guard updateRestartProfileIDsInFlight.insert(profileID).inserted else { return }
+        if let restartUpdatedRunner {
+            restartUpdatedRunner(profileID)
+        } else {
+            supervisors[profileID]?.restart()
+        }
+    }
+
+    private func requiresRestart(_ source: RunnerUpdateStateSource) -> Bool {
+        guard let running = source.runningVersion, let installed = source.installedVersion else { return false }
+        return running < installed
+    }
+
+    private func updateSource(for profile: RunnerProfile) -> RunnerUpdateStateSource {
+        if let injectedUpdateStateSource { return injectedUpdateStateSource(profile) }
+        let supervisor = supervisors[profile.id]
+        let path = (try? RunnerCommandBuilder.resolve(
+            profile: profile,
+            homeDirectoryPath: homeDirectoryPath
+        ).executableURL.standardizedFileURL.path) ?? ""
+        return RunnerUpdateStateSource(
+            status: supervisor?.status ?? .stopped,
+            hasActiveThread: supervisor?.activeThread != nil,
+            runningVersion: supervisor?.runningAmpVersion,
+            installedVersion: ampUpdateController.installedVersions[path],
+            latestVersion: ampUpdateController.latestVersion,
+            installState: ampUpdateController.installStates[path]
+        )
     }
 
     /// A blank profile for the editor. The working directory is intentionally empty so

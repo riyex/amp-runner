@@ -138,6 +138,7 @@ targets:
     settings:
       groups: [common]
       base:
+        PRODUCT_NAME: AmpRunner-AppStore
         CODE_SIGN_ENTITLEMENTS: App/Resources/AmpRunner-AppStore.entitlements
 
 schemes:
