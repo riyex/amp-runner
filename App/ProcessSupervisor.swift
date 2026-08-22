@@ -3,6 +3,7 @@ import Combine
 import AmpRunnerCore
 
 typealias AmpVersionProvider = (ResolvedRunnerCommand, [String: String]) async -> AmpVersion?
+typealias TerminationCallbackScheduler = (@escaping @MainActor () -> Void) -> Void
 
 /// Supervises exactly one `amp --no-tui` process for one profile.
 ///
@@ -38,6 +39,7 @@ final class ProcessSupervisor: ObservableObject {
     private let environmentProvider: () -> [String: String]
     private let versionProvider: AmpVersionProvider
     private let monitorExecutableURL: URL
+    private let terminationCallbackScheduler: TerminationCallbackScheduler
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -51,7 +53,7 @@ final class ProcessSupervisor: ObservableObject {
     private var runningEnvironment: [String: String]?
     private var metadataTask: Task<RunnerThreadDetails?, Never>?
     private var metadataRequestID: UUID?
-    private var restartPolicy = RunnerRestartPolicy()
+    private var restartPolicy: RunnerRestartPolicy
     private var isStoppingIntentionally = false
 
     init(
@@ -60,7 +62,11 @@ final class ProcessSupervisor: ObservableObject {
         homeDirectoryPath: String = FileManager.default.homeDirectoryForCurrentUser.path,
         environmentProvider: @escaping () -> [String: String] = { ProcessInfo.processInfo.environment },
         versionProvider: @escaping AmpVersionProvider = { _, _ in nil },
-        monitorExecutableURL: URL? = nil
+        monitorExecutableURL: URL? = nil,
+        terminationCallbackScheduler: @escaping TerminationCallbackScheduler = { callback in
+            Task { @MainActor in callback() }
+        },
+        restartPolicy: RunnerRestartPolicy = RunnerRestartPolicy()
     ) {
         self.profileID = profile.id
         self.profile = profile
@@ -69,6 +75,8 @@ final class ProcessSupervisor: ObservableObject {
         self.environmentProvider = environmentProvider
         self.versionProvider = versionProvider
         self.monitorExecutableURL = monitorExecutableURL ?? Self.bundledMonitorExecutableURL()
+        self.terminationCallbackScheduler = terminationCallbackScheduler
+        self.restartPolicy = restartPolicy
     }
 
     var isRunning: Bool { process?.isRunning ?? false }
@@ -177,23 +185,37 @@ final class ProcessSupervisor: ObservableObject {
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
 
-        out.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        out.fileHandleForReading.readabilityHandler = { [weak self, weak process] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
-            Task { @MainActor in self?.ingest(data, isStandardError: false) }
+            Task { @MainActor in
+                guard let self, let process, self.process === process else { return }
+                self.ingest(data, isStandardError: false)
+            }
         }
-        err.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        err.fileHandleForReading.readabilityHandler = { [weak self, weak process] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
-            Task { @MainActor in self?.ingest(data, isStandardError: true) }
+            Task { @MainActor in
+                guard let self, let process, self.process === process else { return }
+                self.ingest(data, isStandardError: true)
+            }
         }
 
-        process.terminationHandler = { [weak self] finished in
+        let terminationCallbackScheduler = terminationCallbackScheduler
+        process.terminationHandler = { [weak self, weak out, weak err] finished in
             let reason = finished.terminationReason
             let code = finished.terminationStatus
-            Task { @MainActor in self?.handleTermination(reason: reason, exitCode: code) }
+            terminationCallbackScheduler {
+                out?.fileHandleForReading.readabilityHandler = nil
+                err?.fileHandleForReading.readabilityHandler = nil
+                self?.handleTermination(process: finished, reason: reason, exitCode: code)
+            }
         }
 
+        self.process = process
+        self.stdoutPipe = out
+        self.stderrPipe = err
         do {
             try process.run()
         } catch {
@@ -201,6 +223,9 @@ final class ProcessSupervisor: ObservableObject {
             err.fileHandleForReading.readabilityHandler = nil
             runningEnvironment = nil
             runningAmpVersion = nil
+            self.process = nil
+            self.stdoutPipe = nil
+            self.stderrPipe = nil
             closeLogFile()
             setStatus(.error("Failed to launch: \(error.localizedDescription)"))
             return
@@ -210,9 +235,6 @@ final class ProcessSupervisor: ObservableObject {
         runningEnvironment = launchEnvironment
         runningAmpVersion = version
 
-        self.process = process
-        self.stdoutPipe = out
-        self.stderrPipe = err
         append(logLine: "[amp-runner] equivalent terminal command: " + RunnerCommandBuilder.commandPreview(for: command))
     }
 
@@ -508,7 +530,12 @@ final class ProcessSupervisor: ObservableObject {
         writeToLogFile(logLine)
     }
 
-    private func handleTermination(reason: Process.TerminationReason, exitCode: Int32) {
+    private func handleTermination(
+        process finishedProcess: Process,
+        reason: Process.TerminationReason,
+        exitCode: Int32
+    ) {
+        guard process === finishedProcess else { return }
         let stoppedIntentionally = isStoppingIntentionally
         isStoppingIntentionally = false
         escalationTask?.cancel()

@@ -352,3 +352,43 @@ private actor SleepRecorder {
         pending.forEach { $0.resume(throwing: CancellationError()) }
     }
 }
+
+final class RunnerCoordinatorUpdateRegistrationTests: XCTestCase {
+    @MainActor
+    func testLoadEditDeleteAndPathSaveResynchronizeStandardizedExecutablePaths() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let io = MemoryProfileIO()
+        let store = RunnerProfileStore(fileURL: root.appendingPathComponent("profiles.json"), io: io)
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let pathStore = RunnerPathSettingsStore(defaults: defaults, key: "test")
+        let controller = AmpUpdateController()
+        var profile = RunnerProfile(
+            name: "One", runnerID: "one", workingDirectoryPath: root.path,
+            ampExecutablePath: root.appendingPathComponent("bin/../amp").path
+        )
+        try store.save([profile])
+        let coordinator = RunnerCoordinator(
+            homeDirectoryPath: root.path, store: store, pathSettingsStore: pathStore,
+            inheritedEnvironment: ["PATH": "/usr/bin"], ampUpdateController: controller
+        )
+
+        coordinator.onLaunch()
+        XCTAssertEqual(controller.registeredExecutableURLs.map(\.path), [root.appendingPathComponent("amp").standardizedFileURL.path])
+
+        profile.ampExecutablePath = root.appendingPathComponent("other-amp").path
+        try coordinator.persist(profile)
+        XCTAssertEqual(controller.registeredExecutableURLs.map(\.path), [profile.ampExecutablePath])
+
+        try coordinator.savePathDirectories([root.path])
+        XCTAssertEqual(controller.registeredExecutableURLs.map(\.path), [profile.ampExecutablePath])
+
+        try coordinator.delete(profile)
+        XCTAssertTrue(controller.registeredExecutableURLs.isEmpty)
+    }
+}
+
+private final class MemoryProfileIO: ProfileStoreFileIO {
+    private var data: Data?
+    func read(from url: URL) throws -> Data? { data }
+    func write(_ data: Data, to url: URL) throws { self.data = data }
+}

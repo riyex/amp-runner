@@ -60,3 +60,44 @@ swift test
 
 - Focused hosted tests emit existing macOS service/bookmark diagnostics from the app test host; they do not affect test results.
 - No update preferences, scheduling, or update orchestration were added; those remain for Task 6.
+
+## Fix Round 1
+
+### Outcome
+
+- Process and pipe callbacks now carry the originating `Process` identity. A stale termination callback disables only its captured old pipe handlers, then returns without clearing or changing the replacement launch's process, pipes, command, environment, version, status, retry policy, or restart work.
+- Added deterministic termination-delivery and restart-policy seams used only to force stale ordering and zero-delay retries in tests.
+- Added coverage for repeated intentional restart, stale termination ordering, abnormal retry through the same version provider without policy reset, post-probe launch failure, and coordinator load/edit/delete/PATH registration synchronization.
+
+### RED evidence
+
+Focused Xcode invocation initially failed to compile because `ProcessSupervisor` did not accept `terminationCallbackScheduler` or an injected `restartPolicy`. After adding the seams, the repeated intentional restart test also failed with `XCTAssertEqual: 1 is not equal to 2`, exposing an assertion that observed the old `.starting` state rather than waiting for the replacement probe; the test was corrected to synchronize on provider entry.
+
+### GREEN evidence
+
+```sh
+xcodebuild test -project AmpRunner.xcodeproj -scheme AmpRunner \
+  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO \
+  -only-testing:AmpRunnerTests/ProcessSupervisorVersionTests \
+  -only-testing:AmpRunnerTests/RunnerCoordinatorUpdateRegistrationTests
+```
+
+`TEST SUCCEEDED`: 9 tests, 0 failures (8 supervisor lifecycle/version tests and 1 coordinator registration test).
+
+```sh
+swift test
+```
+
+Passed 149 tests with 0 failures. `git diff --check` also passed.
+
+### Race self-review
+
+- Old termination after replacement spawn: identity guard prevents all current-launch mutation; only captured old readability handlers are detached.
+- Old readability delivery after replacement spawn: each delivery checks the captured process is still the supervisor's current process before ingesting bytes.
+- Repeated intentional restart: one replacement provider call is observed and intentional stop does not consume abnormal retry budget.
+- Consecutive abnormal exits: three provider calls exhaust an injected two-retry policy, proving retries use the same provider path and do not reset policy.
+- Probe success followed by spawn rejection: version remains unpublished and no process is retained.
+
+### Remaining concern
+
+- Hosted Xcode tests continue to emit pre-existing macOS service/bookmark diagnostics; all selected tests pass. The Low fixture-cleanup item remains deferred as requested.

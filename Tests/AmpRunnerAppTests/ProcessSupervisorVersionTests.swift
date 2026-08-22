@@ -98,6 +98,92 @@ final class ProcessSupervisorVersionTests: XCTestCase {
     }
 
     @MainActor
+    func testRepeatedIntentionalRestartCreatesOneReplacementProbe() async throws {
+        let fixture = try SupervisorFixture()
+        let counter = ProbeCounter()
+        let supervisor = ProcessSupervisor(
+            profile: fixture.profile,
+            homeDirectoryPath: fixture.root.path,
+            versionProvider: { _, _ in await counter.record() },
+            monitorExecutableURL: fixture.monitorURL
+        )
+
+        supervisor.start()
+        try await waitUntil { supervisor.isRunning }
+        supervisor.restart()
+        supervisor.restart()
+        await counter.waitForCallCount(2)
+        try await waitUntil(timeout: .seconds(4)) { supervisor.isRunning }
+
+        let callCount = await counter.callCount
+        XCTAssertEqual(callCount, 2)
+        supervisor.stop()
+    }
+
+    @MainActor
+    func testStaleTerminationCannotClearReplacementLaunch() async throws {
+        let fixture = try SupervisorFixture(ampScript: "#!/bin/sh\nexit 0\n")
+        let callbacks = TerminationCallbackQueue()
+        let supervisor = ProcessSupervisor(
+            profile: fixture.profile,
+            homeDirectoryPath: fixture.root.path,
+            versionProvider: { _, _ in AmpVersion("3.0.0") },
+            monitorExecutableURL: fixture.monitorURL,
+            terminationCallbackScheduler: { callback in callbacks.append(callback) }
+        )
+
+        supervisor.start()
+        try await waitUntil { callbacks.count == 1 }
+        try "#!/bin/sh\nsleep 30\n".write(to: fixture.ampURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fixture.ampURL.path)
+        supervisor.start()
+        try await waitUntil { supervisor.isRunning }
+        callbacks.runFirst()
+
+        XCTAssertTrue(supervisor.isRunning)
+        XCTAssertEqual(supervisor.runningAmpVersion, AmpVersion("3.0.0"))
+        supervisor.stop()
+    }
+
+    @MainActor
+    func testAbnormalRetryUsesProviderWithoutResettingRetryPolicy() async throws {
+        let fixture = try SupervisorFixture(ampScript: "#!/bin/sh\nexit 7\n")
+        let counter = ProbeCounter()
+        let supervisor = ProcessSupervisor(
+            profile: fixture.profile,
+            homeDirectoryPath: fixture.root.path,
+            versionProvider: { _, _ in await counter.record() },
+            monitorExecutableURL: fixture.monitorURL,
+            restartPolicy: RunnerRestartPolicy(delays: [0, 0])
+        )
+
+        supervisor.start()
+        try await waitUntil { supervisor.status.errorMessage?.contains("restart limit reached after 2 attempts") == true }
+
+        let callCount = await counter.callCount
+        XCTAssertEqual(callCount, 3)
+        XCTAssertNil(supervisor.runningAmpVersion)
+    }
+
+    @MainActor
+    func testPostProbeLaunchFailureNeverPublishesVersion() async throws {
+        let fixture = try SupervisorFixture()
+        try FileManager.default.removeItem(at: fixture.monitorURL)
+        let supervisor = ProcessSupervisor(
+            profile: fixture.profile,
+            homeDirectoryPath: fixture.root.path,
+            versionProvider: { _, _ in AmpVersion("8.0.0") },
+            monitorExecutableURL: fixture.monitorURL
+        )
+
+        supervisor.start()
+        try await waitUntil { supervisor.status.errorMessage?.contains("Monitor helper is missing") == true }
+
+        XCTAssertNil(supervisor.runningAmpVersion)
+        XCTAssertFalse(supervisor.isRunning)
+    }
+
+    @MainActor
     private func waitUntil(
         timeout: Duration = .seconds(2),
         _ condition: @escaping @MainActor () -> Bool
@@ -117,16 +203,45 @@ private struct SupervisorFixture {
     let monitorURL: URL
     let profile: RunnerProfile
 
-    init() throws {
+    init(ampScript: String = "#!/bin/sh\nsleep 30\n") throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         ampURL = root.appendingPathComponent("amp")
         monitorURL = root.appendingPathComponent("monitor")
-        try "#!/bin/sh\nsleep 30\n".write(to: ampURL, atomically: true, encoding: .utf8)
+        try ampScript.write(to: ampURL, atomically: true, encoding: .utf8)
         try "#!/bin/sh\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"--\" ]; then shift; exec \"$@\"; fi\n  shift\ndone\n".write(to: monitorURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ampURL.path)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: monitorURL.path)
         profile = RunnerProfile(name: "Test", runnerID: "test", workingDirectoryPath: root.path, ampExecutablePath: ampURL.path, arguments: [])
+    }
+}
+
+private actor ProbeCounter {
+    private(set) var callCount = 0
+
+    func record() -> AmpVersion? {
+        callCount += 1
+        return AmpVersion("1.0.0")
+    }
+
+    func waitForCallCount(_ expected: Int) async {
+        while callCount < expected { await Task.yield() }
+    }
+}
+
+@MainActor
+private final class TerminationCallbackQueue {
+    private var callbacks: [@MainActor () -> Void] = []
+    var count: Int { callbacks.count }
+
+    func append(_ callback: @escaping @MainActor () -> Void) { callbacks.append(callback) }
+    func runFirst() { callbacks.removeFirst()() }
+}
+
+private extension RunnerStatus {
+    var errorMessage: String? {
+        guard case .error(let message) = self else { return nil }
+        return message
     }
 }
 
