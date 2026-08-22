@@ -40,6 +40,8 @@ tests macOS only. Everything that can be decided without a window lives there:
   protocol, including the duplicate-working-directory rule.
 - `RunnerPathSettings` — global ordered user directories and deterministic `PATH`
   resolution.
+- Amp update contracts — version parsing/comparison, persisted preferences, profile-state
+  derivation, and pure aggregate notification/idle-restart policies.
 - `AmpSettingsChecker` — reads and merges `amp.remoteThreadCreation.enabled` from
   settings-file *contents* passed in as `Data`, never from a hardcoded path.
 
@@ -74,6 +76,23 @@ render. None of them make decisions the core could have made. In particular, the
 confirmation sheet summarizes the same `ResolvedRunnerCommand` value that is handed to
 the launcher, so the Amp executable or arguments the user approves cannot drift from what
 is run.
+
+Amp updates use one app-wide `AmpUpdateController`, with one schedule (three seconds after
+launch and then hourly), rather than profile timers, supervisor timers, polling, or file
+watchers. Executable registrations, probes, and installs are keyed by standardized absolute
+path, so profiles sharing an executable share work and state while retaining their own
+captured running versions. The controller fetches the release once, bounds command output
+and displayed errors, and invokes executables directly. Installation uses only
+`<configured amp> update --porcelain`; that strict output contract is the migration boundary
+and an `updated <version>` result is accepted without a post-install version probe.
+
+`ProcessSupervisor` depends only on a generic asynchronous launch-version provider. It
+captures the launch environment once, asks for the version before spawning, and publishes
+that version only for the resulting process. `RunnerCoordinator` is the sole join point for
+controller state, profile state, and supervisor state, and it alone owns aggregate
+notification and idle-restart policy. It subscribes to state changes rather than polling;
+no controller maps are copied into profiles or supervisors. Update failures remain separate
+from runner process health and never alter the aggregate menu-bar health icon.
 
 ## 3. Distribution recommendation
 
@@ -199,7 +218,8 @@ These properties are non-negotiable and are implemented literally.
 3. **No credential storage, ever.** The app persists only its own non-secret
    configuration: profiles as JSON at
    `~/Library/Application Support/AmpRunner/profiles.json`, and global user-added `PATH`
-   directories in macOS preferences. There is no Keychain usage for secrets anywhere in
+   directories, four Amp update preferences, and aggregate notification deduplication
+   ledgers in macOS preferences. There is no Keychain usage for secrets anywhere in
    the codebase. Atlassian refresh tokens, Git/SSH credentials, and OAuth tokens are never
    read, stored, exported, or logged. Amp Runner does not provide secrets support.
 4. **Never root, never a daemon.** Everything runs in the logged-in user's GUI session.

@@ -112,8 +112,25 @@ Linux plumbing, but the project does not currently claim Linux compatibility.
    for work), Working (executing a thread), or Error. Per-profile submenus give you logs,
    Finder/Terminal access, and a copyable equivalent terminal command.
 
-Notifications for thread start / finish / failure and a **Start Amp Runner at Login**
-toggle are both in the menu.
+Settings has five panes, in order: **General**, **Runners**, **Environment**, **Updates**,
+and **Logs**. General contains **Start Amp Runner at Login** and the thread lifecycle
+notification choices. Runner rows and profile menus show the Amp version captured for the
+current launch (or the installed version while stopped), plus update-available,
+restart-required, installing, and failure states without changing runner health colors.
+
+The Updates pane checks for Amp releases and manages every distinct configured Amp
+executable centrally. By default, scheduled checks and aggregate update notifications are
+on; automatic installation and automatic idle restart are off. Manual **Check Now** and
+**Install Now** remain available when scheduled checks are off. Amp's headless mode omits
+the interactive CLI update check, so Amp Runner invokes each outdated executable's own
+`update --porcelain` command; it does not download or replace the binary itself.
+
+After installation, stopped runners remain stopped. Running outdated runners can be
+restarted individually, queued with **Restart All When Idle**, or restarted immediately
+with **Restart All Now…**. Automatic and queued restarts wait for a runner to be online
+and idle and never interrupt active work. Restart All Now is the explicit exception and
+asks for confirmation when affected runners are working. Update-available and
+restart-required notifications are aggregate rather than one notification per runner.
 
 The Settings window has one global **Environment** tab for every profile. Its ordered user
 directories are prepended to the runner `PATH`, followed by the app-inherited `PATH` entries
@@ -129,8 +146,9 @@ it launched.
 Keychain usage for secrets anywhere in the codebase. Atlassian refresh tokens, OAuth
 tokens, and Git/SSH credentials are never touched. Amp Runner persists only its own
 non-secret settings. Profiles are stored as JSON at
-`~/Library/Application Support/AmpRunner/profiles.json`, and global user-added `PATH`
-directories in macOS preferences.
+`~/Library/Application Support/AmpRunner/profiles.json`, plus global user-added `PATH`
+directories, update preferences, and notification deduplication ledgers in macOS
+preferences.
 
 Amp Runner does not execute a login shell or source shell startup files, so it does not
 promise complete Terminal-environment parity. It offers no arbitrary environment-variable

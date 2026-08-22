@@ -334,6 +334,69 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         for _ in 0..<10 where fixture.restarts.isEmpty { await Task.yield() }
         XCTAssertEqual(fixture.restarts, [fixture.first.id], "reconciliation must observe the published value after mutation")
     }
+
+    @MainActor
+    func testFakeAmpEndToEndCheckInstallNotificationAndIdleRestart() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let ampURL = root.appendingPathComponent("amp")
+        let versionURL = root.appendingPathComponent("version")
+        let callsURL = root.appendingPathComponent("calls")
+        try Data("1.0.0\n".utf8).write(to: versionURL)
+        let script = """
+        #!/bin/sh
+        printf '%s\n' "$*" >> "\(callsURL.path)"
+        case "$1" in
+          version) cat "\(versionURL.path)" ;;
+          update)
+            test "$2" = "--porcelain" || exit 2
+            printf '2.0.0\n' > "\(versionURL.path)"
+            printf 'updated 2.0.0\n'
+            ;;
+          *) exit 3 ;;
+        esac
+        """
+        try Data(script.utf8).write(to: ampURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: ampURL.path)
+
+        var releaseRequests = 0
+        let controller = AmpUpdateController(fetchRelease: { _ in
+            releaseRequests += 1
+            return Data("2.0.0\n".utf8)
+        })
+        let fixture = try Fixture(
+            preferences: .init(automaticallyChecksForUpdates: false, restartsUpdatedRunnersWhenIdle: true),
+            controller: controller,
+            executablePath: ampURL.path
+        )
+        fixture.snapshots[fixture.first.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.snapshots[fixture.second.id] = .init(status: .stopped, active: false, running: nil)
+        fixture.load()
+
+        await controller.checkNow()
+        _ = await controller.installedVersion(for: ampURL, environment: [:])
+        fixture.coordinator.reevaluateUpdateNotifications()
+        XCTAssertEqual(fixture.coordinator.updateState(for: fixture.first), .updateAvailable(installed: AmpVersion("1.0.0")!, latest: AmpVersion("2.0.0")!))
+
+        await controller.installOutdatedExecutables()
+        let batch = try XCTUnwrap(controller.lastCompletedInstallBatch)
+        fixture.coordinator.reevaluateUpdateNotifications(completedBatch: batch)
+        XCTAssertEqual(fixture.coordinator.updateState(for: fixture.first), .restartRequired(running: AmpVersion("1.0.0")!, installed: AmpVersion("2.0.0")!))
+        XCTAssertTrue(fixture.restarts.isEmpty, "automatic policy must not interrupt working Amp")
+
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.changes.send()
+        XCTAssertEqual(fixture.restarts, [fixture.first.id])
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("2.0.0"))
+        fixture.changes.send()
+        XCTAssertEqual(fixture.coordinator.updateState(for: fixture.first), .upToDate(AmpVersion("2.0.0")!))
+
+        let calls = try String(contentsOf: callsURL, encoding: .utf8).split(separator: "\n").map(String.init)
+        XCTAssertEqual(releaseRequests, 1)
+        XCTAssertEqual(calls.filter { $0 == "update --porcelain" }.count, 1)
+        XCTAssertEqual(fixture.updateRequests.filter { $0.category == .restartRequired }.count, 1)
+    }
 }
 
 @MainActor
@@ -360,12 +423,13 @@ private final class Fixture {
         preferencesStore suppliedStore: AmpUpdatePreferencesStore? = nil,
         controller: AmpUpdateController? = nil,
         sharedExecutable: Bool = true,
+        executablePath: String? = nil,
         savePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil,
         installOutdatedExecutables: (() -> Void)? = nil
     ) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        path = root.appendingPathComponent("amp").path
+        path = executablePath ?? root.appendingPathComponent("amp").path
         secondPath = sharedExecutable ? path : root.appendingPathComponent("amp-two").path
         let firstDirectory = root.appendingPathComponent("one")
         let secondDirectory = root.appendingPathComponent("two")
@@ -403,8 +467,8 @@ private final class Fixture {
                     hasActiveThread: snapshot?.active ?? false,
                     runningVersion: snapshot?.running,
                     installedVersion: controller?.installedVersions[profile.ampExecutablePath] ?? self?.installed[profile.ampExecutablePath],
-                    latestVersion: self?.latest,
-                    installState: self?.installStates[self?.path ?? ""]
+                    latestVersion: controller?.latestVersion ?? self?.latest,
+                    installState: controller?.installStates[profile.ampExecutablePath] ?? self?.installStates[self?.path ?? ""]
                 )
             },
             restartUpdatedRunner: { [weak self] id in self?.restarts.append(id) },
