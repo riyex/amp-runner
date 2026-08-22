@@ -58,6 +58,29 @@ final class RunnerUpdateNotificationTests: XCTestCase {
     }
 
     @MainActor
+    func testPersistedRestartBatchIDIsSuppressedAfterNotifierRelaunch() throws {
+        let suite = "RunnerUpdateNotificationTests-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var attempts = [RunnerUpdateNotificationRequest]()
+        let input = AmpUpdateNotificationInput(
+            installedBatchVersion: AmpVersion("2.0.0"),
+            installedBatchIdentity: "4E0899CF-A8A8-4452-9285-89E52ACB8C79",
+            outdatedExecutableCount: 0, affectedRunnerCount: 2,
+            restartRequiredRunnerCount: 2, idleRunnerCount: 1, workingRunnerCount: 1,
+            automaticallyRestartsWhenIdle: false
+        )
+        RunnerNotifier(defaults: defaults, deliverUpdate: { attempts.append($0); return true })
+            .notifyUpdates(input: input, enabled: true)
+
+        RunnerNotifier(defaults: defaults, deliverUpdate: { attempts.append($0); return true })
+            .notifyUpdates(input: input, enabled: true)
+
+        XCTAssertEqual(attempts.count, 1)
+        XCTAssertEqual(attempts.first?.title, "Restart runners to finish updating Amp")
+    }
+
+    @MainActor
     func testUpdatePreferenceIsIndependentFromLifecyclePreference() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         defaults.set(true, forKey: "com.riyex.amprunner.notificationsEnabled")

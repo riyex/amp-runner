@@ -543,7 +543,7 @@ final class RunnerCoordinator: ObservableObject {
         notifier.notifyUpdates(input: AmpUpdateNotificationInput(
             latestVersion: latest,
             installedBatchVersion: installedBatchVersion,
-            installedBatchIdentity: completedBatch.map { String($0.completedAt.timeIntervalSinceReferenceDate) },
+            installedBatchIdentity: completedBatch?.id.uuidString,
             outdatedExecutableCount: outdatedPaths.count,
             affectedRunnerCount: outdatedProfiles.count,
             restartRequiredRunnerCount: restartSources.count,

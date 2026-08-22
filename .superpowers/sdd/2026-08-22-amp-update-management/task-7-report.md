@@ -55,3 +55,12 @@ The Updates pane UI is scheduled for Task 8. Task 7 adds the `.updates` routing 
 - RED: core tests rejected the missing batch identity API, and hosted tests rejected the missing coordinator installation seam.
 - GREEN: focused hosted notification/orchestration tests passed; `swift test` passed 150 tests; `git diff --check` passed.
 - Persistent dedupe remains advanced independently of delivery authorization/result, and update notifications remain aggregate and free of profile/thread metadata.
+
+## Fix Round 3
+
+- Added an immutable UUID identity to every `AmpInstallBatch`, with a default generated value and an injectable initializer value for deterministic tests.
+- Restart-notification dedupe now persists and compares the batch UUID rather than deriving identity from `completedAt`; completion time remains unchanged for state/display use and no executable paths are persisted.
+- Added coverage proving distinct IDs with the same completion timestamp both emit one aggregate notification, replaying the same batch ID is suppressed, and a persisted batch ID remains suppressed after notifier relaunch.
+- Representative maximum installed version selection and aggregate notification content remain unchanged.
+- RED: focused hosted tests failed to compile because `AmpInstallBatch` did not accept an ID.
+- GREEN: focused hosted notification/orchestration tests passed; `swift test` passed 150 tests; `git diff --check` passed.

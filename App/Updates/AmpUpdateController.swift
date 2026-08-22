@@ -47,8 +47,15 @@ struct AmpInstallBatch: Equatable, Sendable {
         let outcome: Outcome
     }
 
+    let id: UUID
     let completedAt: Date
     let results: [Result]
+
+    init(id: UUID = UUID(), completedAt: Date, results: [Result]) {
+        self.id = id
+        self.completedAt = completedAt
+        self.results = results
+    }
 }
 
 @MainActor

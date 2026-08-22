@@ -69,6 +69,29 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
     }
 
     @MainActor
+    func testDistinctBatchIDsAtSameCompletionTimeBothEmitAggregateNotifications() throws {
+        let fixture = try Fixture()
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.snapshots[fixture.second.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+        let completedAt = Date(timeIntervalSinceReferenceDate: 42)
+        let result = AmpInstallBatch.Result(
+            path: fixture.path,
+            state: .succeeded(AmpVersion("2.0.0")!),
+            outcome: .updated(AmpVersion("2.0.0")!)
+        )
+
+        fixture.installCompletions.send(.init(id: UUID(), completedAt: completedAt, results: [result]))
+        fixture.installCompletions.send(.init(id: UUID(), completedAt: completedAt, results: [result]))
+
+        XCTAssertEqual(fixture.updateRequests.map(\.body), [
+            "2 runners need a restart: 1 idle, 1 working.",
+            "2 runners need a restart: 1 idle, 1 working."
+        ])
+    }
+
+    @MainActor
     func testEmptyFailedAndNoUpdateBatchesIgnoreUnrelatedPriorRestartState() throws {
         let fixture = try Fixture()
         fixture.installed[fixture.path] = AmpVersion("2.0.0")
