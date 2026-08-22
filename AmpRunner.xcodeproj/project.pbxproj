@@ -1,0 +1,975 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		023C0F171F0D2B9F80B39F6F /* ProcessSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1277F831EBF46C01F7855683 /* ProcessSupervisor.swift */; };
+		053AE2C91F48C933A0BB5FCA /* ProfileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B99C9E4D20EA6093628E900F /* ProfileEditorView.swift */; };
+		09F3376350CA6683A5440210 /* EnvironmentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */; };
+		146028EDADDDE4B2F391B3B8 /* RunnerNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A6C10F3B2C793571179C94 /* RunnerNotifier.swift */; };
+		19C2027CE1933C3354C2222D /* AmpRunnerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 76C5150D90B0542DC543EBCE /* AmpRunnerCore */; };
+		1ABB3C5C0478661CED30D482 /* LogViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF447E482BEEC48CD3319EA0 /* LogViewerView.swift */; };
+		223D163D652319178E6B8245 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5ECC6E9F4AC9D35EAA8A3D72 /* Assets.xcassets */; };
+		2387B905ADC6325A9FCECC2F /* AmpCommandExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2E679658F56B41A5DB4DFF /* AmpCommandExecutor.swift */; };
+		24AD7A8E6740E4B1A0696FD8 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AB5EBC6543493CAD0990EB /* LaunchAtLoginManager.swift */; };
+		2F882D3F81CD99062A2CA836 /* ProcessSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1277F831EBF46C01F7855683 /* ProcessSupervisor.swift */; };
+		347AF39175C64A0168B3C07C /* AmpRunnerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */; };
+		34B269EE535502749168B0B2 /* SecurityScopedBookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */; };
+		35EE6E9CCBC2A20F0C747D58 /* EnvironmentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */; };
+		37AE4AC5EAFA72F48F7CA85F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B99613250014A596B8AF80 /* main.swift */; };
+		6B71978562E46A0BD5E6948F /* RunnerCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B77A4534C9C1091AC379451E /* RunnerCoordinator.swift */; };
+		8AB0982C6E0EE0B7B87BBB0B /* ProfileListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */; };
+		8BBBEE0BD0B12925BFFE7C94 /* AmpRunnerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */; };
+		98F34F6D0A4534050D101453 /* AmpCommandExecutorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */; };
+		AAA1C11EF127C31428F895EC /* SecurityScopedBookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */; };
+		B4B1BBEC01033AFB70C47B15 /* LogViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF447E482BEEC48CD3319EA0 /* LogViewerView.swift */; };
+		B78460362A6DE6EEF155E159 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5ECC6E9F4AC9D35EAA8A3D72 /* Assets.xcassets */; };
+		C10F3EEEBD5B5EF742DD734D /* RunnerNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A6C10F3B2C793571179C94 /* RunnerNotifier.swift */; };
+		C48AC21F6B3AA2234A262FA6 /* AmpRunnerMonitor in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 41F92FCBE70943FE54328050 /* AmpRunnerMonitor */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C48F20F4734CD699A6DD119D /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1957B302E5A2AAB81C1F1FF5 /* MenuBarContentView.swift */; };
+		CDB313B46EA0F37999B0690A /* AmpCommandExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2E679658F56B41A5DB4DFF /* AmpCommandExecutor.swift */; };
+		CF9880889DD12839F934B2FA /* RunnerCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B77A4534C9C1091AC379451E /* RunnerCoordinator.swift */; };
+		D58FE8FD9E63506ED86CC100 /* AmpRunnerMonitor in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 41F92FCBE70943FE54328050 /* AmpRunnerMonitor */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E274BE4D46F0D4A1D43D7880 /* StartConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0721E5366B773A2587CBF182 /* StartConfirmationView.swift */; };
+		E8E076806DC245295A5BCEBC /* ProfileListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */; };
+		E8E39F93A0B1FA45DBE999AB /* AmpRunnerCore in Frameworks */ = {isa = PBXBuildFile; productRef = C89D1A80077A633001CE8170 /* AmpRunnerCore */; };
+		E8E7C7AF0D6A3B1967920965 /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1957B302E5A2AAB81C1F1FF5 /* MenuBarContentView.swift */; };
+		EDE401F3A69402997759A25C /* ProfileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B99C9E4D20EA6093628E900F /* ProfileEditorView.swift */; };
+		F1E84CA18C30B01947DC4065 /* AmpRunnerCore in Frameworks */ = {isa = PBXBuildFile; productRef = BC0DE5CE83E7E3695DD1E4AB /* AmpRunnerCore */; };
+		F6969FF996047474BA89DF61 /* AmpRunnerMonitorSupport in Frameworks */ = {isa = PBXBuildFile; productRef = A6C450A2347D4E0B81DBBFA2 /* AmpRunnerMonitorSupport */; };
+		F6A026B9E0A88D9A16143C64 /* StartConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0721E5366B773A2587CBF182 /* StartConfirmationView.swift */; };
+		FEE499EA7F8E1D8047030CA5 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AB5EBC6543493CAD0990EB /* LaunchAtLoginManager.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		686C405827D2736F6F4256C4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B8E321BAA08352C6A8294B9B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0B4C608F68B52D34EB77C458;
+			remoteInfo = AmpRunner;
+		};
+		93C6A5D84C1479463AD20B57 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B8E321BAA08352C6A8294B9B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6BF4FA7BBE876B8273E11CC0;
+			remoteInfo = AmpRunnerMonitor;
+		};
+		BE3A7422701C956B35CE9BC4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B8E321BAA08352C6A8294B9B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6BF4FA7BBE876B8273E11CC0;
+			remoteInfo = AmpRunnerMonitor;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		0C0EF00A4800A00EA7E6AC0B /* Embed Dependencies */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Helpers;
+			dstSubfolderSpec = 1;
+			files = (
+				C48AC21F6B3AA2234A262FA6 /* AmpRunnerMonitor in Embed Dependencies */,
+			);
+			name = "Embed Dependencies";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4876C074B7FDEA91E5F6EC8F /* Embed Dependencies */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Helpers;
+			dstSubfolderSpec = 1;
+			files = (
+				D58FE8FD9E63506ED86CC100 /* AmpRunnerMonitor in Embed Dependencies */,
+			);
+			name = "Embed Dependencies";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0721E5366B773A2587CBF182 /* StartConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartConfirmationView.swift; sourceTree = "<group>"; };
+		10F8E3E49C383BC7573F5E0E /* project.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = project.yml; sourceTree = "<group>"; };
+		1277F831EBF46C01F7855683 /* ProcessSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessSupervisor.swift; sourceTree = "<group>"; };
+		1957B302E5A2AAB81C1F1FF5 /* MenuBarContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarContentView.swift; sourceTree = "<group>"; };
+		31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedBookmarkStore.swift; sourceTree = "<group>"; };
+		41F92FCBE70943FE54328050 /* AmpRunnerMonitor */ = {isa = PBXFileReference; includeInIndex = 0; path = AmpRunnerMonitor; sourceTree = BUILT_PRODUCTS_DIR; };
+		5ECC6E9F4AC9D35EAA8A3D72 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6650D1AB88BBB54B55045780 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileListView.swift; sourceTree = "<group>"; };
+		68D555C47FE6F749518E5649 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		69188BDA6C26624B251A71A9 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
+		76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpCommandExecutorTests.swift; sourceTree = "<group>"; };
+		76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpRunnerApp.swift; sourceTree = "<group>"; };
+		77AFCE9E4D63ED4483053CF3 /* AmpRunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AmpRunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7964056871F9D8C64E739432 /* amp-update-management */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "amp-update-management"; path = .; sourceTree = SOURCE_ROOT; };
+		7F2E679658F56B41A5DB4DFF /* AmpCommandExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpCommandExecutor.swift; sourceTree = "<group>"; };
+		81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentSettingsView.swift; sourceTree = "<group>"; };
+		8F7474B2E55BCAF4B6E972CE /* AmpRunner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AmpRunner.entitlements; sourceTree = "<group>"; };
+		A1AB5EBC6543493CAD0990EB /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
+		AB8FDEBE21F4E3EA970E0FAA /* ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ARCHITECTURE.md; sourceTree = "<group>"; };
+		AF447E482BEEC48CD3319EA0 /* LogViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogViewerView.swift; sourceTree = "<group>"; };
+		B77A4534C9C1091AC379451E /* RunnerCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerCoordinator.swift; sourceTree = "<group>"; };
+		B99C9E4D20EA6093628E900F /* ProfileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditorView.swift; sourceTree = "<group>"; };
+		BFEC7F8C9EBF099306C9B3F8 /* AmpRunner-AppStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "AmpRunner-AppStore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C42092DA24A8AA7D51F31C41 /* AmpRunner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AmpRunner.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D7A9F6DE134C3A6C79BC64D8 /* AmpRunner-AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "AmpRunner-AppStore.entitlements"; sourceTree = "<group>"; };
+		E8A6C10F3B2C793571179C94 /* RunnerNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerNotifier.swift; sourceTree = "<group>"; };
+		F0B99613250014A596B8AF80 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		86CB6B05084004ED33F374C4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F1E84CA18C30B01947DC4065 /* AmpRunnerCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		90139A3B0A52324D01EA2DD0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				19C2027CE1933C3354C2222D /* AmpRunnerCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AADCD6642781F0626B5F5543 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E8E39F93A0B1FA45DBE999AB /* AmpRunnerCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BEBDBE231E7686CB8807078F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F6969FF996047474BA89DF61 /* AmpRunnerMonitorSupport in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0393FF73F3CD3576D0E13717 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				253C7CD831EC1AD1952D099B /* AmpRunnerMonitor */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		081E8C1A39112FC5F73EB86D /* AmpRunnerAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */,
+			);
+			path = AmpRunnerAppTests;
+			sourceTree = "<group>";
+		};
+		11A304760DE1D69C64CA51BD /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				081E8C1A39112FC5F73EB86D /* AmpRunnerAppTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		13FB5D96B59B156B2FDD83AE /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				D7A9F6DE134C3A6C79BC64D8 /* AmpRunner-AppStore.entitlements */,
+				8F7474B2E55BCAF4B6E972CE /* AmpRunner.entitlements */,
+				5ECC6E9F4AC9D35EAA8A3D72 /* Assets.xcassets */,
+				68D555C47FE6F749518E5649 /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		253C7CD831EC1AD1952D099B /* AmpRunnerMonitor */ = {
+			isa = PBXGroup;
+			children = (
+				F0B99613250014A596B8AF80 /* main.swift */,
+			);
+			path = AmpRunnerMonitor;
+			sourceTree = "<group>";
+		};
+		3CFD653D941F31AE96DADC7B /* App */ = {
+			isa = PBXGroup;
+			children = (
+				76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */,
+				A1AB5EBC6543493CAD0990EB /* LaunchAtLoginManager.swift */,
+				1277F831EBF46C01F7855683 /* ProcessSupervisor.swift */,
+				B77A4534C9C1091AC379451E /* RunnerCoordinator.swift */,
+				31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */,
+				4BD68BC62B476F430136DF8E /* Notifications */,
+				13FB5D96B59B156B2FDD83AE /* Resources */,
+				89CCED8E8E9297A73B1ED728 /* Updates */,
+				CBB8DBB883F6B45C77A41003 /* Views */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		409601BA6F9FC47BB387F1CF = {
+			isa = PBXGroup;
+			children = (
+				AB8FDEBE21F4E3EA970E0FAA /* ARCHITECTURE.md */,
+				69188BDA6C26624B251A71A9 /* Package.swift */,
+				10F8E3E49C383BC7573F5E0E /* project.yml */,
+				6650D1AB88BBB54B55045780 /* README.md */,
+				3CFD653D941F31AE96DADC7B /* App */,
+				642ED2E1BF9103A4664C6AA5 /* Packages */,
+				0393FF73F3CD3576D0E13717 /* Sources */,
+				11A304760DE1D69C64CA51BD /* Tests */,
+				B2BE98B264126DE23A90B43D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4BD68BC62B476F430136DF8E /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				E8A6C10F3B2C793571179C94 /* RunnerNotifier.swift */,
+			);
+			path = Notifications;
+			sourceTree = "<group>";
+		};
+		642ED2E1BF9103A4664C6AA5 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				7964056871F9D8C64E739432 /* amp-update-management */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		89CCED8E8E9297A73B1ED728 /* Updates */ = {
+			isa = PBXGroup;
+			children = (
+				7F2E679658F56B41A5DB4DFF /* AmpCommandExecutor.swift */,
+			);
+			path = Updates;
+			sourceTree = "<group>";
+		};
+		B2BE98B264126DE23A90B43D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BFEC7F8C9EBF099306C9B3F8 /* AmpRunner-AppStore.app */,
+				C42092DA24A8AA7D51F31C41 /* AmpRunner.app */,
+				41F92FCBE70943FE54328050 /* AmpRunnerMonitor */,
+				77AFCE9E4D63ED4483053CF3 /* AmpRunnerTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CBB8DBB883F6B45C77A41003 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */,
+				AF447E482BEEC48CD3319EA0 /* LogViewerView.swift */,
+				1957B302E5A2AAB81C1F1FF5 /* MenuBarContentView.swift */,
+				B99C9E4D20EA6093628E900F /* ProfileEditorView.swift */,
+				66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */,
+				0721E5366B773A2587CBF182 /* StartConfirmationView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0B4C608F68B52D34EB77C458 /* AmpRunner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F7C10CF21F5BC049F3C8C772 /* Build configuration list for PBXNativeTarget "AmpRunner" */;
+			buildPhases = (
+				7086BC1248CB14E0FFD96A9E /* Copy LaunchAgent plist */,
+				AAE8E43AD0E1403F7B0ECD67 /* Sources */,
+				88B6EAC618F6BED5EC574FA6 /* Resources */,
+				AADCD6642781F0626B5F5543 /* Frameworks */,
+				0C0EF00A4800A00EA7E6AC0B /* Embed Dependencies */,
+				547B9E075FB4E924A360247D /* Stamp Debug Build Number */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9958AC33058616FC2A375DC3 /* PBXTargetDependency */,
+			);
+			name = AmpRunner;
+			packageProductDependencies = (
+				C89D1A80077A633001CE8170 /* AmpRunnerCore */,
+			);
+			productName = AmpRunner;
+			productReference = C42092DA24A8AA7D51F31C41 /* AmpRunner.app */;
+			productType = "com.apple.product-type.application";
+		};
+		6BF4FA7BBE876B8273E11CC0 /* AmpRunnerMonitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 700BCE1E2E98E907934585FC /* Build configuration list for PBXNativeTarget "AmpRunnerMonitor" */;
+			buildPhases = (
+				7C840BAB34BAF46FF94F95B9 /* Sources */,
+				BEBDBE231E7686CB8807078F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AmpRunnerMonitor;
+			packageProductDependencies = (
+				A6C450A2347D4E0B81DBBFA2 /* AmpRunnerMonitorSupport */,
+			);
+			productName = AmpRunnerMonitor;
+			productReference = 41F92FCBE70943FE54328050 /* AmpRunnerMonitor */;
+			productType = "com.apple.product-type.tool";
+		};
+		9AC6CF24BF52EC88979B85B9 /* AmpRunner-AppStore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C167B52F5FDA2E31EF8094E2 /* Build configuration list for PBXNativeTarget "AmpRunner-AppStore" */;
+			buildPhases = (
+				C9A9977AFE048C94ECD2E85F /* Copy LaunchAgent plist */,
+				54D2C43262836E170F999036 /* Sources */,
+				451D695A51019EC719A7040E /* Resources */,
+				86CB6B05084004ED33F374C4 /* Frameworks */,
+				4876C074B7FDEA91E5F6EC8F /* Embed Dependencies */,
+				84AE148823BA4235F183B50E /* Stamp Debug Build Number */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2B73F522E8E15658CEC88CEC /* PBXTargetDependency */,
+			);
+			name = "AmpRunner-AppStore";
+			packageProductDependencies = (
+				BC0DE5CE83E7E3695DD1E4AB /* AmpRunnerCore */,
+			);
+			productName = "AmpRunner-AppStore";
+			productReference = BFEC7F8C9EBF099306C9B3F8 /* AmpRunner-AppStore.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F641C27091783101B4A7237D /* AmpRunnerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77220589D313627E17A1C7FE /* Build configuration list for PBXNativeTarget "AmpRunnerTests" */;
+			buildPhases = (
+				E58B9A0D8AF060F35A2F9AF4 /* Sources */,
+				90139A3B0A52324D01EA2DD0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2FD07FB96F7DF51FD1FCCC53 /* PBXTargetDependency */,
+			);
+			name = AmpRunnerTests;
+			packageProductDependencies = (
+				76C5150D90B0542DC543EBCE /* AmpRunnerCore */,
+			);
+			productName = AmpRunnerTests;
+			productReference = 77AFCE9E4D63ED4483053CF3 /* AmpRunnerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B8E321BAA08352C6A8294B9B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0B4C608F68B52D34EB77C458 = {
+						ProvisioningStyle = Automatic;
+					};
+					6BF4FA7BBE876B8273E11CC0 = {
+						ProvisioningStyle = Automatic;
+					};
+					9AC6CF24BF52EC88979B85B9 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 582D825C79E11168EFD9A66B /* Build configuration list for PBXProject "AmpRunner" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 409601BA6F9FC47BB387F1CF;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				972B8B4666AEAA5698B630D3 /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B2BE98B264126DE23A90B43D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6BF4FA7BBE876B8273E11CC0 /* AmpRunnerMonitor */,
+				0B4C608F68B52D34EB77C458 /* AmpRunner */,
+				F641C27091783101B4A7237D /* AmpRunnerTests */,
+				9AC6CF24BF52EC88979B85B9 /* AmpRunner-AppStore */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		451D695A51019EC719A7040E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B78460362A6DE6EEF155E159 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		88B6EAC618F6BED5EC574FA6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				223D163D652319178E6B8245 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		547B9E075FB4E924A360247D /* Stamp Debug Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp Debug Build Number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nif [ \"${CONFIGURATION}\" = \"Debug\" ]; then\n  build_number=$(date -u +%Y%m%d.%H%M%S)\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion ${build_number}\" \\\n    \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nfi\n";
+		};
+		7086BC1248CB14E0FFD96A9E /* Copy LaunchAgent plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/App/Resources/com.riyex.amprunner.agent.plist",
+			);
+			name = "Copy LaunchAgent plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Contents/Library/LaunchAgents/com.riyex.amprunner.agent.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nlaunch_agent_dir=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Contents/Library/LaunchAgents\"\nmkdir -p \"${launch_agent_dir}\"\ncp \"${SRCROOT}/App/Resources/com.riyex.amprunner.agent.plist\" \"${launch_agent_dir}/com.riyex.amprunner.agent.plist\"\n";
+		};
+		84AE148823BA4235F183B50E /* Stamp Debug Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp Debug Build Number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nif [ \"${CONFIGURATION}\" = \"Debug\" ]; then\n  build_number=$(date -u +%Y%m%d.%H%M%S)\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion ${build_number}\" \\\n    \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nfi\n";
+		};
+		C9A9977AFE048C94ECD2E85F /* Copy LaunchAgent plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/App/Resources/com.riyex.amprunner.agent.plist",
+			);
+			name = "Copy LaunchAgent plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Contents/Library/LaunchAgents/com.riyex.amprunner.agent.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nlaunch_agent_dir=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Contents/Library/LaunchAgents\"\nmkdir -p \"${launch_agent_dir}\"\ncp \"${SRCROOT}/App/Resources/com.riyex.amprunner.agent.plist\" \"${launch_agent_dir}/com.riyex.amprunner.agent.plist\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		54D2C43262836E170F999036 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2387B905ADC6325A9FCECC2F /* AmpCommandExecutor.swift in Sources */,
+				347AF39175C64A0168B3C07C /* AmpRunnerApp.swift in Sources */,
+				09F3376350CA6683A5440210 /* EnvironmentSettingsView.swift in Sources */,
+				FEE499EA7F8E1D8047030CA5 /* LaunchAtLoginManager.swift in Sources */,
+				B4B1BBEC01033AFB70C47B15 /* LogViewerView.swift in Sources */,
+				C48F20F4734CD699A6DD119D /* MenuBarContentView.swift in Sources */,
+				023C0F171F0D2B9F80B39F6F /* ProcessSupervisor.swift in Sources */,
+				EDE401F3A69402997759A25C /* ProfileEditorView.swift in Sources */,
+				E8E076806DC245295A5BCEBC /* ProfileListView.swift in Sources */,
+				6B71978562E46A0BD5E6948F /* RunnerCoordinator.swift in Sources */,
+				C10F3EEEBD5B5EF742DD734D /* RunnerNotifier.swift in Sources */,
+				34B269EE535502749168B0B2 /* SecurityScopedBookmarkStore.swift in Sources */,
+				E274BE4D46F0D4A1D43D7880 /* StartConfirmationView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7C840BAB34BAF46FF94F95B9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				37AE4AC5EAFA72F48F7CA85F /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AAE8E43AD0E1403F7B0ECD67 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CDB313B46EA0F37999B0690A /* AmpCommandExecutor.swift in Sources */,
+				8BBBEE0BD0B12925BFFE7C94 /* AmpRunnerApp.swift in Sources */,
+				35EE6E9CCBC2A20F0C747D58 /* EnvironmentSettingsView.swift in Sources */,
+				24AD7A8E6740E4B1A0696FD8 /* LaunchAtLoginManager.swift in Sources */,
+				1ABB3C5C0478661CED30D482 /* LogViewerView.swift in Sources */,
+				E8E7C7AF0D6A3B1967920965 /* MenuBarContentView.swift in Sources */,
+				2F882D3F81CD99062A2CA836 /* ProcessSupervisor.swift in Sources */,
+				053AE2C91F48C933A0BB5FCA /* ProfileEditorView.swift in Sources */,
+				8AB0982C6E0EE0B7B87BBB0B /* ProfileListView.swift in Sources */,
+				CF9880889DD12839F934B2FA /* RunnerCoordinator.swift in Sources */,
+				146028EDADDDE4B2F391B3B8 /* RunnerNotifier.swift in Sources */,
+				AAA1C11EF127C31428F895EC /* SecurityScopedBookmarkStore.swift in Sources */,
+				F6A026B9E0A88D9A16143C64 /* StartConfirmationView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E58B9A0D8AF060F35A2F9AF4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				98F34F6D0A4534050D101453 /* AmpCommandExecutorTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2B73F522E8E15658CEC88CEC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6BF4FA7BBE876B8273E11CC0 /* AmpRunnerMonitor */;
+			targetProxy = BE3A7422701C956B35CE9BC4 /* PBXContainerItemProxy */;
+		};
+		2FD07FB96F7DF51FD1FCCC53 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0B4C608F68B52D34EB77C458 /* AmpRunner */;
+			targetProxy = 686C405827D2736F6F4256C4 /* PBXContainerItemProxy */;
+		};
+		9958AC33058616FC2A375DC3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6BF4FA7BBE876B8273E11CC0 /* AmpRunnerMonitor */;
+			targetProxy = 93C6A5D84C1479463AD20B57 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		329B2623447D0288A08EAC75 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riyex.AmpRunnerMonitor;
+				PRODUCT_NAME = AmpRunnerMonitor;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		36B8C56BAE664B670EC9244B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "App/Resources/AmpRunner-AppStore.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riyex.amprunner;
+				PRODUCT_NAME = AmpRunner;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		3D35C6DED277D2E7EAD28A07 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "App/Resources/AmpRunner-AppStore.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riyex.amprunner;
+				PRODUCT_NAME = AmpRunner;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		4EC8C312287CFA1C8D1C5DEA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		83662F57FEFB81A007B89B37 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/Resources/AmpRunner.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riyex.amprunner;
+				PRODUCT_NAME = AmpRunner;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B65337696B142B53939CCBB9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riyex.amprunner.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AmpRunner.app/Contents/MacOS/AmpRunner";
+			};
+			name = Release;
+		};
+		DA585C3C5B2E808F48D4E09C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riyex.AmpRunnerMonitor;
+				PRODUCT_NAME = AmpRunnerMonitor;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		DFA19205A79AE5B7DF8A2C19 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riyex.amprunner.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AmpRunner.app/Contents/MacOS/AmpRunner";
+			};
+			name = Debug;
+		};
+		E1D4DB75F0451E9F2A62B25F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		FDD531437517B9C77B994059 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/Resources/AmpRunner.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riyex.amprunner;
+				PRODUCT_NAME = AmpRunner;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		582D825C79E11168EFD9A66B /* Build configuration list for PBXProject "AmpRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4EC8C312287CFA1C8D1C5DEA /* Debug */,
+				E1D4DB75F0451E9F2A62B25F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		700BCE1E2E98E907934585FC /* Build configuration list for PBXNativeTarget "AmpRunnerMonitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DA585C3C5B2E808F48D4E09C /* Debug */,
+				329B2623447D0288A08EAC75 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		77220589D313627E17A1C7FE /* Build configuration list for PBXNativeTarget "AmpRunnerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DFA19205A79AE5B7DF8A2C19 /* Debug */,
+				B65337696B142B53939CCBB9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C167B52F5FDA2E31EF8094E2 /* Build configuration list for PBXNativeTarget "AmpRunner-AppStore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				36B8C56BAE664B670EC9244B /* Debug */,
+				3D35C6DED277D2E7EAD28A07 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F7C10CF21F5BC049F3C8C772 /* Build configuration list for PBXNativeTarget "AmpRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FDD531437517B9C77B994059 /* Debug */,
+				83662F57FEFB81A007B89B37 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		972B8B4666AEAA5698B630D3 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		76C5150D90B0542DC543EBCE /* AmpRunnerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AmpRunnerCore;
+		};
+		A6C450A2347D4E0B81DBBFA2 /* AmpRunnerMonitorSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AmpRunnerMonitorSupport;
+		};
+		BC0DE5CE83E7E3695DD1E4AB /* AmpRunnerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AmpRunnerCore;
+		};
+		C89D1A80077A633001CE8170 /* AmpRunnerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AmpRunnerCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B8E321BAA08352C6A8294B9B /* Project object */;
+}

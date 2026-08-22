@@ -116,6 +116,21 @@ targets:
       base:
         CODE_SIGN_ENTITLEMENTS: App/Resources/AmpRunner.entitlements
 
+  AmpRunnerTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/AmpRunnerAppTests
+    dependencies:
+      - target: AmpRunner
+      - package: AmpRunnerCore
+        product: AmpRunnerCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.riyex.amprunner.tests
+        SWIFT_VERSION: "5.0"
+
   # Same sources, sandboxed entitlements. Kept so the App Store option exists if Apple's
   # review stance changes, or if the user only needs one self-contained directory.
   AmpRunner-AppStore:
@@ -135,6 +150,8 @@ schemes:
       config: Debug
     test:
       config: Debug
+      targets:
+        - AmpRunnerTests
     profile:
       config: Debug
     analyze:
