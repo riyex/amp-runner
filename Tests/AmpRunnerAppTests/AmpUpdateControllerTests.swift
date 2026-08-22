@@ -237,6 +237,48 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testFullyInvalidatedInstallBatchDoesNotReplaceLastLegitimateCompletion() async {
+        let commands = GatedCommands(results: [
+            "1.0.0\n", "updated 2.0.0\n",
+            "1.0.0\n", "updated 2.0.0\n"
+        ])
+        let firstURL = URL(fileURLWithPath: "/tmp/first/amp")
+        let staleURL = URL(fileURLWithPath: "/tmp/stale/amp")
+        let oldEnvironment = ["PATH": "/old/bin"]
+        let newEnvironment = ["PATH": "/new/bin"]
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await commands.execute($0) }
+        )
+        controller.synchronizeExecutables([AmpExecutableRegistration(executableURL: firstURL)])
+        await controller.checkNow()
+
+        let firstInstall = Task { await controller.installOutdatedExecutables() }
+        await commands.waitForRequestCount(1)
+        await commands.resume(at: 0)
+        await commands.waitForRequestCount(2)
+        await commands.resume(at: 1)
+        await firstInstall.value
+        let legitimateBatch = controller.lastCompletedInstallBatch
+        XCTAssertEqual(legitimateBatch?.results.map(\.path), [firstURL.path])
+
+        controller.synchronizeExecutables([
+            AmpExecutableRegistration(executableURL: staleURL, environment: oldEnvironment)
+        ])
+        let staleInstall = Task { await controller.installOutdatedExecutables() }
+        await commands.waitForRequestCount(3)
+        await commands.resume(at: 2)
+        await commands.waitForRequestCount(4)
+        controller.synchronizeExecutables([
+            AmpExecutableRegistration(executableURL: staleURL, environment: newEnvironment)
+        ])
+        await commands.resume(at: 3)
+        await staleInstall.value
+
+        XCTAssertEqual(controller.lastCompletedInstallBatch, legitimateBatch)
+    }
+
+    @MainActor
     func testConcurrentInstallCallsCoalesceAndReserveAutomaticAttemptBeforeProbeSuspends() async {
         let commands = GatedCommands(results: ["1.0.0\n", "updated 2.0.0\n"])
         let url = URL(fileURLWithPath: "/tmp/amp")

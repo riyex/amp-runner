@@ -293,13 +293,17 @@ final class AmpUpdateController: ObservableObject {
 
     private func performInstallBatch(urls: [URL], latestVersion: AmpVersion) async {
         var results: [AmpInstallBatch.Result] = []
+        var discardedStaleResult = false
         for url in urls {
             let path = url.path
             let environment = registeredEnvironments[path] ?? ProcessInfo.processInfo.environment
             let registrationGeneration = registrationGenerations[path, default: 0]
             guard let installed = await probeVersion(for: url, environment: environment, force: true), installed < latestVersion else { continue }
             guard registrationGenerations[path] == registrationGeneration,
-                  registeredEnvironments[path] == environment else { continue }
+                  registeredEnvironments[path] == environment else {
+                discardedStaleResult = true
+                continue
+            }
             installStates[path] = .installing
             let finalState: AmpExecutableInstallState
             do {
@@ -337,8 +341,11 @@ final class AmpUpdateController: ObservableObject {
                registeredEnvironments[path] == environment {
                 installStates[path] = finalState
                 results.append(.init(path: path, state: finalState))
+            } else {
+                discardedStaleResult = true
             }
         }
+        guard !results.isEmpty || !discardedStaleResult else { return }
         lastCompletedInstallBatch = AmpInstallBatch(completedAt: now(), results: results)
     }
 

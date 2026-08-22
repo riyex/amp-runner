@@ -186,3 +186,21 @@ Passed 149 tests with 0 failures. `git diff --check` also passed.
 - Removal increments the retained generation and clears old probe metadata; re-registration therefore cannot make a pre-removal probe current again.
 - Authoritative porcelain output is published only while the same standardized path is currently registered; no post-update version command was added.
 - The checked-in Xcode project still has the pre-existing duplicate app-product output issue, so hosted verification used and then removed the same temporary App Store product-name workaround. The untracked preserved plan was not modified.
+
+## Fix Round 5
+
+### Outcome
+
+- A batch now records when an otherwise publishable install result was discarded because its registration generation or environment became stale. If every result is discarded for that reason, the batch leaves `lastCompletedInstallBatch` unchanged instead of publishing an empty stale completion.
+- Legitimate empty completions still publish when no executable needs an update, mixed batches still publish their current results, and authoritative `updated <version>` handling is unchanged.
+- Added a suspended-install regression that first establishes a legitimate completed batch, invalidates a later update by changing its environment while the porcelain command is suspended, and proves the stale empty aggregate cannot replace the legitimate history.
+
+### RED and verification evidence
+
+- The regression was added first and failed exactly as expected: `lastCompletedInstallBatch` changed from the legitimate successful result to a later batch with an empty `results` array.
+- Focused controller and supervisor tests: `TEST SUCCEEDED`, 23 tests, 0 failures (14 controller and 9 supervisor). The run used the prior temporary App Store product-name workaround, which was removed immediately afterward.
+- Full `swift test`: 149 tests, 0 failures. `git diff --check` passed.
+
+### Remaining concern
+
+- The checked-in duplicate `AmpRunner.app` product-output issue remains deferred as requested; hosted verification without the temporary product-name workaround can fail before test execution. No deferred Low or duplicate-product changes were included.
