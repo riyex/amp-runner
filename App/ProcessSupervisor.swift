@@ -5,6 +5,14 @@ import AmpRunnerCore
 typealias AmpVersionProvider = (ResolvedRunnerCommand, [String: String]) async -> AmpVersion?
 typealias TerminationCallbackScheduler = (@escaping @MainActor () -> Void) -> Void
 
+enum SupervisorRestartLifecycle: Equatable {
+    case none
+    case inProgress
+    case completed
+    case failed
+    case aborted
+}
+
 /// Supervises exactly one `amp --no-tui` process for one profile.
 ///
 /// Two independent sources of truth feed `status`:
@@ -27,6 +35,7 @@ final class ProcessSupervisor: ObservableObject {
     @Published private(set) var lastCompletedThread: RunnerThreadDetails?
     @Published private(set) var lastThreadDuration: TimeInterval?
     @Published private(set) var runningAmpVersion: AmpVersion?
+    @Published private(set) var restartLifecycle: SupervisorRestartLifecycle = .none
 
     let profileID: UUID
     private(set) var profile: RunnerProfile
@@ -111,6 +120,7 @@ final class ProcessSupervisor: ObservableObject {
         do {
             command = try resolvedCommand()
         } catch {
+            if restartLifecycle == .inProgress { restartLifecycle = .failed }
             setStatus(.error("\(error)"))
             return
         }
@@ -120,10 +130,12 @@ final class ProcessSupervisor: ObservableObject {
             atPath: command.workingDirectoryURL.path,
             isDirectory: &isDirectory
         ), isDirectory.boolValue else {
+            if restartLifecycle == .inProgress { restartLifecycle = .failed }
             setStatus(.error("Working directory does not exist: \(command.workingDirectoryURL.path)"))
             return
         }
         guard FileManager.default.isExecutableFile(atPath: command.executableURL.path) else {
+            if restartLifecycle == .inProgress { restartLifecycle = .failed }
             setStatus(.error("Not an executable file: \(command.executableURL.path)"))
             return
         }
@@ -161,6 +173,7 @@ final class ProcessSupervisor: ObservableObject {
         let monitorExecutableURL = monitorExecutableURL
         guard FileManager.default.isExecutableFile(atPath: monitorExecutableURL.path) else {
             closeLogFile()
+            if restartLifecycle == .inProgress { restartLifecycle = .failed }
             setStatus(.error("Monitor helper is missing: \(monitorExecutableURL.path)"))
             return
         }
@@ -227,6 +240,7 @@ final class ProcessSupervisor: ObservableObject {
             self.stdoutPipe = nil
             self.stderrPipe = nil
             closeLogFile()
+            if restartLifecycle == .inProgress { restartLifecycle = .failed }
             setStatus(.error("Failed to launch: \(error.localizedDescription)"))
             return
         }
@@ -234,6 +248,7 @@ final class ProcessSupervisor: ObservableObject {
         runningCommand = command
         runningEnvironment = launchEnvironment
         runningAmpVersion = version
+        if restartLifecycle == .inProgress { restartLifecycle = .completed }
 
         append(logLine: "[amp-runner] equivalent terminal command: " + RunnerCommandBuilder.commandPreview(for: command))
     }
@@ -241,6 +256,7 @@ final class ProcessSupervisor: ObservableObject {
     /// SIGINT first so `amp` can run its own graceful shutdown (it prompts about
     /// in-flight threads), escalating to SIGTERM only if it does not exit in time.
     func stop() {
+        if restartLifecycle == .inProgress { restartLifecycle = .aborted }
         launchTask?.cancel()
         launchTask = nil
         restartTask?.cancel()
@@ -266,6 +282,7 @@ final class ProcessSupervisor: ObservableObject {
     }
 
     func restart() {
+        restartLifecycle = .inProgress
         if isRunning {
             restartAfterStop()
         } else {
@@ -275,6 +292,7 @@ final class ProcessSupervisor: ObservableObject {
 
     private func restartAfterStop() {
         stop()
+        restartLifecycle = .inProgress
         guard restartTask == nil else { return }
         restartTask = Task { @MainActor [weak self] in
             guard let self else { return }

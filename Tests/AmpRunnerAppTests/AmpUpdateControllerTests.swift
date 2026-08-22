@@ -4,6 +4,59 @@ import AmpRunnerCore
 
 final class AmpUpdateControllerTests: XCTestCase {
     @MainActor
+    func testRegistrationAndNewLatestEventDriveDeduplicatedProbes() async {
+        let commands = GatedCommands(results: ["1.0.0\n", "1.1.0\n"])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        var identity = AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: "old")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await commands.execute($0) },
+            readIdentity: { _ in identity }
+        )
+
+        controller.synchronizeExecutables([
+            .init(executableURL: url, environment: [:]),
+            .init(executableURL: url, environment: [:])
+        ])
+        await commands.waitForRequestCount(1)
+        await commands.resume(at: 0)
+        await waitUntil { controller.installedVersions[url.path] == AmpVersion("1.0.0") }
+
+        identity.fileIdentifier = "new"
+        await controller.checkNow()
+        await commands.waitForRequestCount(2)
+        await commands.resume(at: 1)
+        await waitUntil { controller.installedVersions[url.path] == AmpVersion("1.1.0") }
+
+        let arguments = await commands.recordedRequests.map(\.arguments)
+        XCTAssertEqual(arguments, [["version"], ["version"]])
+    }
+
+    @MainActor
+    func testConcurrentChecksCoalesceAndCancellationInvalidatesUncooperativeCompletion() async {
+        let fetches = GatedFetches(values: ["2.0.0", "3.0.0"])
+        let controller = AmpUpdateController(fetchRelease: { try await fetches.fetch($0) })
+
+        async let first: Void = controller.checkNow()
+        await fetches.waitForRequestCount(1)
+        async let second: Void = controller.checkNow()
+        await Task.yield()
+        let requestCount = await fetches.requestCount
+        XCTAssertEqual(requestCount, 1)
+        await fetches.resume(at: 0)
+        _ = await (first, second)
+        XCTAssertEqual(controller.latestVersion, AmpVersion("2.0.0"))
+
+        let stale = Task { await controller.checkNow() }
+        await fetches.waitForRequestCount(2)
+        controller.cancel()
+        await fetches.resume(at: 1)
+        await stale.value
+        XCTAssertEqual(controller.latestVersion, AmpVersion("2.0.0"))
+        XCTAssertEqual(controller.checkState, .idle)
+    }
+
+    @MainActor
     func testScheduleUsesOneTaskThreeSecondThenHourlySleepsAndDisableCancelsIt() async {
         let sleeper = SleepRecorder()
         let controller = AmpUpdateController(
@@ -91,7 +144,7 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testIdentityChangeAndNewReleaseEachPermitAReprobe() async {
+    func testIdentityChangePermitsAReprobeAndUnchangedLatestDoesNotDuplicateIt() async {
         var identity = AmpExecutableIdentity(modificationDate: Date(timeIntervalSince1970: 1), fileSize: 10, fileIdentifier: "7")
         let recorder = CommandRecorder(results: (1...3).map {
             AmpCommandResult(exitCode: 0, stdout: Data("1.\($0).0\n".utf8), stderr: Data())
@@ -111,9 +164,9 @@ final class AmpUpdateControllerTests: XCTestCase {
         XCTAssertEqual(observed, AmpVersion("1.2.0"))
         await controller.checkNow()
         observed = await controller.installedVersion(for: url)
-        XCTAssertEqual(observed, AmpVersion("1.3.0"))
+        XCTAssertEqual(observed, AmpVersion("1.2.0"))
         let requestCount = await recorder.requests.count
-        XCTAssertEqual(requestCount, 3)
+        XCTAssertEqual(requestCount, 2)
     }
 
     @MainActor
@@ -366,6 +419,14 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 }
 
+@MainActor
+private func waitUntil(_ condition: @escaping () -> Bool) async {
+    for _ in 0..<1_000 {
+        if condition() { return }
+        await Task.yield()
+    }
+}
+
 private enum TestError: Error { case message(String) }
 
 private actor CommandRecorder {
@@ -392,6 +453,28 @@ private actor GatedCommands {
         requests.append(request)
         await withCheckedContinuation { continuations[index] = $0 }
         return AmpCommandResult(exitCode: 0, stdout: Data(results[index].utf8), stderr: Data())
+    }
+
+    func waitForRequestCount(_ count: Int) async {
+        while requests.count < count { await Task.yield() }
+    }
+
+    func resume(at index: Int) { continuations.removeValue(forKey: index)?.resume() }
+}
+
+private actor GatedFetches {
+    private var requests: [URLRequest] = []
+    private let values: [String]
+    private var continuations: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    init(values: [String]) { self.values = values }
+    var requestCount: Int { requests.count }
+
+    func fetch(_ request: URLRequest) async throws -> Data {
+        let index = requests.count
+        requests.append(request)
+        await withCheckedContinuation { continuations[index] = $0 }
+        return Data(values[index].utf8)
     }
 
     func waitForRequestCount(_ count: Int) async {

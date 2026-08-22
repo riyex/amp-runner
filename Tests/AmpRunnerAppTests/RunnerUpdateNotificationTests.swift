@@ -26,7 +26,7 @@ final class RunnerUpdateNotificationTests: XCTestCase {
             version: AmpVersion("2.0.0")!, runnerCount: 3, idleCount: 1,
             workingCount: 2, automaticallyRestartsWhenIdle: true
         ))
-        XCTAssertEqual(content.body, "1 runner restarted; 2 pending until idle.")
+        XCTAssertEqual(content.body, "1 idle runner will restart now; 2 working runners will restart when idle.")
         XCTAssertEqual(content.actions, [.openUpdates])
     }
 

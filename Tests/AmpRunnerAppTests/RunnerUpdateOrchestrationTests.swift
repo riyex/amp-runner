@@ -115,8 +115,21 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
 
         fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
 
-        XCTAssertEqual(fixture.updateRequests.last?.body, "0 runners restarted; 1 pending until idle.")
+        XCTAssertEqual(fixture.updateRequests.last?.body, "0 idle runners will restart now; 1 working runner will restart when idle.")
         XCTAssertEqual(fixture.updateRequests.last?.actions, [.openUpdates])
+    }
+
+    @MainActor
+    func testAutomaticNotificationCountsOnlineRunnerWithActiveThreadAsWorking() throws {
+        let fixture = try Fixture(preferences: .init(restartsUpdatedRunnersWhenIdle: true))
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+
+        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
+
+        XCTAssertEqual(fixture.updateRequests.last?.body, "0 idle runners will restart now; 1 working runner will restart when idle.")
+        XCTAssertTrue(fixture.restarts.isEmpty)
     }
 
     @MainActor
@@ -282,6 +295,24 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedUpdateRestartClearsInFlightAndCanRetry() throws {
+        let fixture = try Fixture()
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.load()
+        fixture.coordinator.restartToUpdate(fixture.first)
+        XCTAssertEqual(fixture.restarts, [fixture.first.id])
+
+        fixture.snapshots[fixture.first.id] = .init(status: .error("launch failed"), active: false, running: nil)
+        fixture.changes.send()
+        XCTAssertFalse(fixture.coordinator.updateRestartProfileIDsInFlight.contains(fixture.first.id))
+
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.coordinator.restartToUpdate(fixture.first)
+        XCTAssertEqual(fixture.restarts, [fixture.first.id, fixture.first.id])
+    }
+
+    @MainActor
     func testPreferencesLoadSaveApplyAndMalformedLoadIsNonfatal() throws {
         let suite = "RunnerUpdateOrchestrationTests-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -324,6 +355,7 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         let fixture = try Fixture(preferences: .init(restartsUpdatedRunnersWhenIdle: true), controller: controller)
         fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
         fixture.load()
+        for _ in 0..<100 where controller.installedVersions[fixture.path] == nil { await Task.yield() }
         _ = await controller.installedVersion(for: URL(fileURLWithPath: fixture.path), environment: [:])
         reportedVersion = AmpVersion("2.0.0")!
         controller.synchronizeExecutables([])
@@ -377,6 +409,7 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
 
         await controller.checkNow()
         _ = await controller.installedVersion(for: ampURL, environment: [:])
+        for _ in 0..<100 where controller.installedVersions[ampURL.path] == nil { await Task.yield() }
         fixture.coordinator.reevaluateUpdateNotifications()
         XCTAssertEqual(fixture.coordinator.updateState(for: fixture.first), .updateAvailable(installed: AmpVersion("1.0.0")!, latest: AmpVersion("2.0.0")!))
 

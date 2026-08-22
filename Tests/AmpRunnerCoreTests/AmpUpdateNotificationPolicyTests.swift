@@ -26,6 +26,21 @@ final class AmpUpdateNotificationPolicyTests: XCTestCase {
         XCTAssertTrue(AmpUpdateNotificationPolicy.evaluate(input: input, notificationsEnabled: true, ledger: ledger).events.isEmpty)
     }
 
+    func testRegressedLatestDoesNotNotifyOrMoveLedgerBackward() {
+        let v1 = AmpVersion("1.0")!
+        let input = AmpUpdateNotificationInput(
+            latestVersion: v1, outdatedExecutableCount: 1, affectedRunnerCount: 1,
+            restartRequiredRunnerCount: 0, idleRunnerCount: 0, workingRunnerCount: 0,
+            automaticallyRestartsWhenIdle: false
+        )
+        let ledger = AmpUpdateNotificationLedger(lastUpdateAvailableVersion: v2)
+
+        let result = AmpUpdateNotificationPolicy.evaluate(input: input, notificationsEnabled: true, ledger: ledger)
+
+        XCTAssertTrue(result.events.isEmpty)
+        XCTAssertEqual(result.ledger.lastUpdateAvailableVersion, v2)
+    }
+
     func testRestartEventIsAggregatedPerInstalledVersionAndUsesAutomaticWording() {
         let input = AmpUpdateNotificationInput(
             installedBatchVersion: v2, installedBatchIdentity: "batch-1", outdatedExecutableCount: 0, affectedRunnerCount: 4,

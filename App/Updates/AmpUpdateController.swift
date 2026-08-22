@@ -82,6 +82,9 @@ final class AmpUpdateController: ObservableObject {
     private let readIdentity: IdentityReader
     private var automaticInstallEnabled = false
     private var scheduleTask: Task<Void, Never>?
+    private var checkTask: Task<Result<AmpVersion, Error>, Never>?
+    private var checkToken: UUID?
+    private var probeReconciliationTask: Task<Void, Never>?
     private var probeTasks: [String: ProbeFlight] = [:]
     private var probedIdentities: [String: AmpExecutableIdentity] = [:]
     private var probedRelease: [String: AmpVersion?] = [:]
@@ -91,6 +94,7 @@ final class AmpUpdateController: ObservableObject {
     private var registeredEnvironments: [String: [String: String]] = [:]
     private var registrationGenerations: [String: UInt64] = [:]
     private var nextRegistrationGeneration: UInt64 = 0
+    private var operationGeneration: UInt64 = 0
 
     init(
         fetchRelease: ReleaseFetcher? = nil,
@@ -157,6 +161,7 @@ final class AmpUpdateController: ObservableObject {
         probedRelease = probedRelease.filter { paths.contains($0.key) }
         probedEnvironments = probedEnvironments.filter { paths.contains($0.key) }
         automaticAttempts = automaticAttempts.filter { paths.contains($0.key) }
+        triggerNeededProbes()
     }
 
     func registeredEnvironment(for executableURL: URL) -> [String: String]? {
@@ -187,22 +192,66 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func checkNow() async {
+        if let checkTask {
+            _ = await checkTask.value
+            return
+        }
+        let generation = operationGeneration
+        let token = UUID()
+        let fetchRelease = fetchRelease
         checkState = .checking
-        defer { checkState = .idle }
-        do {
+        checkToken = token
+        let task = Task<Result<AmpVersion, Error>, Never> {
             var request = URLRequest(url: URL(string: "https://static.ampcode.com/cli/cli-version.txt")!)
             request.timeoutInterval = 5
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-            latestVersion = try AmpReleaseResponse.parse(await fetchRelease(request))
+            do { return .success(try AmpReleaseResponse.parse(await fetchRelease(request))) }
+            catch { return .failure(error) }
+        }
+        checkTask = task
+        let result = await task.value
+        guard operationGeneration == generation, checkToken == token else { return }
+        checkTask = nil
+        checkToken = nil
+        checkState = .idle
+        switch result {
+        case let .success(version):
+            let newlyObservedRelease = latestVersion.map { version > $0 } ?? true
+            latestVersion = version
             lastCheckedAt = now()
             checkError = nil
+            if newlyObservedRelease { triggerNeededProbes() }
             if automaticInstallEnabled {
                 await installOutdatedExecutables(automatic: true)
             }
-        } catch is CancellationError {
-            return
-        } catch {
+        case let .failure(error):
             checkError = bounded(error.localizedDescription)
+        }
+    }
+
+    private func triggerNeededProbes() {
+        var needed: [(URL, [String: String])] = []
+        for url in registeredExecutableURLs {
+            let environment = registeredEnvironments[url.path] ?? ProcessInfo.processInfo.environment
+            let path = url.path
+            let identity = readIdentity(url)
+            guard installedVersions[path] == nil || probedIdentities[path] != identity ||
+                    probedEnvironments[path] != environment else { continue }
+            needed.append((url, environment))
+        }
+        guard !needed.isEmpty else { return }
+        probeReconciliationTask?.cancel()
+        probeReconciliationTask = Task { [weak self] in
+            for (url, environment) in needed {
+                guard let self else { return }
+                guard !Task.isCancelled else { return }
+                let path = url.path
+                _ = await self.probeVersion(for: url, environment: environment, force: false)
+                if self.probedRelease[path] != self.latestVersion,
+                   self.probedIdentities[path] != self.readIdentity(url) {
+                    _ = await self.probeVersion(for: url, environment: environment, force: false)
+                }
+            }
         }
     }
 
@@ -222,8 +271,7 @@ final class AmpUpdateController: ObservableObject {
         let path = url.path
         let identity = readIdentity(url)
         let release = latestVersion
-        if let flight = probeTasks[path], flight.identity == identity, flight.release == release,
-           flight.environment == environment {
+        if let flight = probeTasks[path], flight.identity == identity, flight.environment == environment {
             return await flight.task.value
         }
         if !force, let version = installedVersions[path],
@@ -234,6 +282,7 @@ final class AmpUpdateController: ObservableObject {
         }
 
         let executor = executeCommand
+        let generation = operationGeneration
         let token = UUID()
         let task = Task<AmpVersion?, Never> {
             do {
@@ -264,7 +313,8 @@ final class AmpUpdateController: ObservableObject {
             task: task
         )
         let version = await task.value
-        guard probeTasks[path]?.token == token,
+        guard operationGeneration == generation,
+              probeTasks[path]?.token == token,
               registeredExecutableURLs.contains(where: { $0.path == path }) else {
             return version
         }
@@ -282,6 +332,7 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func installOutdatedExecutables(automatic: Bool = false) async {
+        let generation = operationGeneration
         guard let latestVersion else { return }
         if let installBatchTask {
             return await installBatchTask.value
@@ -309,19 +360,22 @@ final class AmpUpdateController: ObservableObject {
         }
         installBatchTask = task
         await task.value
-        if installBatchTask != nil { installBatchTask = nil }
+        if operationGeneration == generation, installBatchTask != nil { installBatchTask = nil }
     }
 
     private func performInstallBatch(urls: [URL], latestVersion: AmpVersion) async {
+        let generation = operationGeneration
         var results: [AmpInstallBatch.Result] = []
         var discardedStaleResult = false
         for url in urls {
+            guard operationGeneration == generation else { return }
             let path = url.path
             let environment = registeredEnvironments[path] ?? ProcessInfo.processInfo.environment
             let registrationGeneration = registrationGenerations[path, default: 0]
             guard let installed = await probeVersion(for: url, environment: environment, force: true), installed < latestVersion else { continue }
             guard registrationGenerations[path] == registrationGeneration,
-                  registeredEnvironments[path] == environment else {
+                  registeredEnvironments[path] == environment,
+                  operationGeneration == generation else {
                 discardedStaleResult = true
                 continue
             }
@@ -362,7 +416,8 @@ final class AmpUpdateController: ObservableObject {
                 finalState = .failed(bounded(error.localizedDescription))
                 outcome = .failed
             }
-            if registrationGenerations[path] == registrationGeneration,
+            if operationGeneration == generation,
+               registrationGenerations[path] == registrationGeneration,
                registeredEnvironments[path] == environment {
                 installStates[path] = finalState
                 results.append(.init(path: path, state: finalState, outcome: outcome))
@@ -370,12 +425,20 @@ final class AmpUpdateController: ObservableObject {
                 discardedStaleResult = true
             }
         }
-        guard !results.isEmpty || !discardedStaleResult else { return }
+        guard operationGeneration == generation,
+              !results.isEmpty || !discardedStaleResult else { return }
         lastCompletedInstallBatch = AmpInstallBatch(completedAt: now(), results: results)
     }
 
     func cancel() {
+        operationGeneration &+= 1
         setAutomaticChecksEnabled(false)
+        checkTask?.cancel()
+        checkTask = nil
+        checkToken = nil
+        checkState = .idle
+        probeReconciliationTask?.cancel()
+        probeReconciliationTask = nil
         for flight in probeTasks.values { flight.task.cancel() }
         probeTasks.removeAll()
         installBatchTask?.cancel()

@@ -81,7 +81,7 @@ public enum AmpUpdateNotificationPolicy {
         var updatedLedger = ledger
         if let latest = input.latestVersion,
            input.outdatedExecutableCount > 0,
-           latest != ledger.lastUpdateAvailableVersion {
+           ledger.lastUpdateAvailableVersion.map({ latest > $0 }) ?? true {
             events.append(.updateAvailable(
                 version: latest,
                 executableCount: input.outdatedExecutableCount,

@@ -180,6 +180,7 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     func onTerminate() {
+        ampUpdateController.cancel()
         for supervisor in supervisors.values {
             supervisor.stop()
         }
@@ -556,7 +557,7 @@ final class RunnerCoordinator: ObservableObject {
                 .executableURL.standardizedFileURL.path,
                   updatedPaths.contains(path), requiresRestart(source) else { return nil }
             switch source.status {
-            case .online where !source.hasActiveThread, .working: return source
+            case .online, .working: return source
             default: return nil
             }
         }
@@ -591,6 +592,15 @@ final class RunnerCoordinator: ObservableObject {
     private func reevaluateUpdateRestarts() {
         for profile in profiles where updateRestartProfileIDsInFlight.contains(profile.id) {
             let source = updateSource(for: profile)
+            if case .error = source.status {
+                updateRestartProfileIDsInFlight.remove(profile.id)
+                continue
+            }
+            if let lifecycle = supervisors[profile.id]?.restartLifecycle,
+               lifecycle == .failed || lifecycle == .aborted {
+                updateRestartProfileIDsInFlight.remove(profile.id)
+                continue
+            }
             if let running = source.runningVersion, let installed = source.installedVersion,
                running >= installed {
                 updateRestartProfileIDsInFlight.remove(profile.id)
