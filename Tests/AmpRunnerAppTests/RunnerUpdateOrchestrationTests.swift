@@ -368,7 +368,8 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         let fixture = try Fixture(
             preferences: .init(automaticallyChecksForUpdates: false, restartsUpdatedRunnersWhenIdle: true),
             controller: controller,
-            executablePath: ampURL.path
+            executablePath: ampURL.path,
+            equivalentSharedExecutablePath: root.appendingPathComponent("alias/../amp").path
         )
         fixture.snapshots[fixture.first.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
         fixture.snapshots[fixture.second.id] = .init(status: .stopped, active: false, running: nil)
@@ -380,8 +381,9 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         XCTAssertEqual(fixture.coordinator.updateState(for: fixture.first), .updateAvailable(installed: AmpVersion("1.0.0")!, latest: AmpVersion("2.0.0")!))
 
         await controller.installOutdatedExecutables()
-        let batch = try XCTUnwrap(controller.lastCompletedInstallBatch)
-        fixture.coordinator.reevaluateUpdateNotifications(completedBatch: batch)
+        for _ in 0..<10 where fixture.updateRequests.filter({ $0.category == .restartRequired }).isEmpty {
+            await Task.yield()
+        }
         XCTAssertEqual(fixture.coordinator.updateState(for: fixture.first), .restartRequired(running: AmpVersion("1.0.0")!, installed: AmpVersion("2.0.0")!))
         XCTAssertTrue(fixture.restarts.isEmpty, "automatic policy must not interrupt working Amp")
 
@@ -417,6 +419,7 @@ private final class Fixture {
     var updateRequests: [RunnerUpdateNotificationRequest] = []
     let changes = PassthroughSubject<Void, Never>()
     let installCompletions = PassthroughSubject<AmpInstallBatch, Never>()
+    private var ownedDefaultsSuites: [String] = []
 
     init(
         preferences: AmpUpdatePreferences? = nil,
@@ -424,13 +427,14 @@ private final class Fixture {
         controller: AmpUpdateController? = nil,
         sharedExecutable: Bool = true,
         executablePath: String? = nil,
+        equivalentSharedExecutablePath: String? = nil,
         savePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil,
         installOutdatedExecutables: (() -> Void)? = nil
     ) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         path = executablePath ?? root.appendingPathComponent("amp").path
-        secondPath = sharedExecutable ? path : root.appendingPathComponent("amp-two").path
+        secondPath = sharedExecutable ? (equivalentSharedExecutablePath ?? path) : root.appendingPathComponent("amp-two").path
         let firstDirectory = root.appendingPathComponent("one")
         let secondDirectory = root.appendingPathComponent("two")
         try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
@@ -444,18 +448,24 @@ private final class Fixture {
         if let suppliedStore {
             preferenceStore = suppliedStore
         } else {
-            preferenceStore = AmpUpdatePreferencesStore(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)), key: "prefs")
+            let suite = UUID().uuidString
+            ownedDefaultsSuites.append(suite)
+            preferenceStore = AmpUpdatePreferencesStore(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)), key: "prefs")
         }
         if let preferences { try preferenceStore.save(preferences) }
-        let notificationDefaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let notificationSuite = UUID().uuidString
+        ownedDefaultsSuites.append(notificationSuite)
+        let notificationDefaults = try XCTUnwrap(UserDefaults(suiteName: notificationSuite))
         let notifier = RunnerNotifier(defaults: notificationDefaults, deliverUpdate: { [weak self] request in
             self?.updateRequests.append(request)
             return true
         })
+        let pathSuite = UUID().uuidString
+        ownedDefaultsSuites.append(pathSuite)
         coordinator = RunnerCoordinator(
             homeDirectoryPath: root.path,
             store: profileStore,
-            pathSettingsStore: RunnerPathSettingsStore(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)), key: "path"),
+            pathSettingsStore: RunnerPathSettingsStore(defaults: try XCTUnwrap(UserDefaults(suiteName: pathSuite)), key: "path"),
             inheritedEnvironment: [:],
             notifier: notifier,
             ampUpdateController: controller,
@@ -466,14 +476,14 @@ private final class Fixture {
                     status: snapshot?.status ?? .stopped,
                     hasActiveThread: snapshot?.active ?? false,
                     runningVersion: snapshot?.running,
-                    installedVersion: controller?.installedVersions[profile.ampExecutablePath] ?? self?.installed[profile.ampExecutablePath],
+                    installedVersion: controller?.installedVersions[URL(fileURLWithPath: profile.ampExecutablePath).standardizedFileURL.path] ?? self?.installed[profile.ampExecutablePath],
                     latestVersion: controller?.latestVersion ?? self?.latest,
-                    installState: controller?.installStates[profile.ampExecutablePath] ?? self?.installStates[self?.path ?? ""]
+                    installState: controller?.installStates[URL(fileURLWithPath: profile.ampExecutablePath).standardizedFileURL.path] ?? self?.installStates[self?.path ?? ""]
                 )
             },
             restartUpdatedRunner: { [weak self] id in self?.restarts.append(id) },
             supervisorChanges: changes.eraseToAnyPublisher(),
-            installCompletions: installCompletions.eraseToAnyPublisher(),
+            installCompletions: controller == nil ? installCompletions.eraseToAnyPublisher() : nil,
             applyUpdatePreferences: { [weak self] value in self?.appliedPreferences.append(value) },
             saveUpdatePreferences: savePreferences,
             installOutdatedExecutables: installOutdatedExecutables
@@ -484,5 +494,12 @@ private final class Fixture {
 
     func complete(_ results: [AmpInstallBatch.Result]) {
         installCompletions.send(.init(completedAt: Date(), results: results))
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: root)
+        for suite in ownedDefaultsSuites {
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
     }
 }

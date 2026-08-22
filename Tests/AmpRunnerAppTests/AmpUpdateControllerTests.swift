@@ -441,9 +441,12 @@ final class RunnerCoordinatorUpdateRegistrationTests: XCTestCase {
     @MainActor
     func testPathSaveInvalidatesOldProbeAndNextCentralProbeUsesResolvedPath() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
         let io = MemoryProfileIO()
         let store = RunnerProfileStore(fileURL: root.appendingPathComponent("profiles.json"), io: io)
-        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let suite = UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
         let pathStore = RunnerPathSettingsStore(defaults: defaults, key: "test")
         let commands = GatedCommands(results: ["1.0.0\n", "2.0.0\n"])
         let controller = AmpUpdateController(executeCommand: { try await commands.execute($0) })

@@ -82,7 +82,9 @@ final class RunnerUpdateNotificationTests: XCTestCase {
 
     @MainActor
     func testUpdatePreferenceIsIndependentFromLifecyclePreference() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "com.riyex.amprunner.notificationsEnabled")
         var updates = [RunnerUpdateNotificationRequest]()
         let notifier = RunnerNotifier(defaults: defaults, deliverUpdate: { request in
@@ -100,7 +102,9 @@ final class RunnerUpdateNotificationTests: XCTestCase {
 
     @MainActor
     func testUpdateActionsRouteWithoutThreadData() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let notifier = RunnerNotifier(defaults: defaults, deliverUpdate: { _ in true })
         var actions = [RunnerNotificationAction]()
         notifier.actionHandler = { actions.append($0) }

@@ -235,7 +235,7 @@ final class ProcessSupervisorVersionTests: XCTestCase {
     }
 }
 
-private struct SupervisorFixture {
+private final class SupervisorFixture {
     let root: URL
     let ampURL: URL
     let monitorURL: URL
@@ -251,6 +251,10 @@ private struct SupervisorFixture {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ampURL.path)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: monitorURL.path)
         profile = RunnerProfile(name: "Test", runnerID: "test", workingDirectoryPath: root.path, ampExecutablePath: ampURL.path, arguments: [])
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: root)
     }
 }
 

@@ -81,10 +81,14 @@ Amp updates use one app-wide `AmpUpdateController`, with one schedule (three sec
 launch and then hourly), rather than profile timers, supervisor timers, polling, or file
 watchers. Executable registrations, probes, and installs are keyed by standardized absolute
 path, so profiles sharing an executable share work and state while retaining their own
-captured running versions. The controller fetches the release once, bounds command output
-and displayed errors, and invokes executables directly. Installation uses only
-`<configured amp> update --porcelain`; that strict output contract is the migration boundary
-and an `updated <version>` result is accepted without a post-install version probe.
+captured running versions. All controller and published state is bounded: executable-keyed
+maps and task caches are limited to registered standardized paths, release and notification
+ledgers retain only current identifiers, completed-install state retains one finite batch,
+and command output and displayed errors have fixed caps. The controller fetches the release
+once and invokes executables directly. Amp Runner contains no downloader or checksum
+implementation. Installation uses only `<configured amp> update --porcelain`; that strict
+output contract is the migration boundary and an `updated <version>` result is accepted
+without a post-install version probe.
 
 `ProcessSupervisor` depends only on a generic asynchronous launch-version provider. It
 captures the launch environment once, asks for the version before spawning, and publishes

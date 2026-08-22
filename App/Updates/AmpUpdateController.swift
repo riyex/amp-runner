@@ -90,6 +90,7 @@ final class AmpUpdateController: ObservableObject {
     private var installBatchTask: Task<Void, Never>?
     private var registeredEnvironments: [String: [String: String]] = [:]
     private var registrationGenerations: [String: UInt64] = [:]
+    private var nextRegistrationGeneration: UInt64 = 0
 
     init(
         fetchRelease: ReleaseFetcher? = nil,
@@ -133,7 +134,8 @@ final class AmpUpdateController: ObservableObject {
             previousEnvironments[$0] != synchronizedEnvironments[$0]
         }
         for path in changedRegistrationPaths {
-            registrationGenerations[path, default: 0] &+= 1
+            nextRegistrationGeneration &+= 1
+            registrationGenerations[path] = nextRegistrationGeneration
         }
         registeredEnvironments = synchronizedEnvironments
         installStates = installStates.filter { paths.contains($0.key) }
@@ -150,6 +152,11 @@ final class AmpUpdateController: ObservableObject {
             probedEnvironments[path] = nil
             automaticAttempts[path] = nil
         }
+        registrationGenerations = registrationGenerations.filter { paths.contains($0.key) }
+        probedIdentities = probedIdentities.filter { paths.contains($0.key) }
+        probedRelease = probedRelease.filter { paths.contains($0.key) }
+        probedEnvironments = probedEnvironments.filter { paths.contains($0.key) }
+        automaticAttempts = automaticAttempts.filter { paths.contains($0.key) }
     }
 
     func registeredEnvironment(for executableURL: URL) -> [String: String]? {
