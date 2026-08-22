@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct AmpCommandRequest: Sendable {
     let executableURL: URL
@@ -46,15 +47,12 @@ struct AmpCommandExecutor: Sendable {
             try await withTaskCancellationHandler {
                 try await wait(for: process, timeout: request.timeout)
             } onCancel: {
-                if process.isRunning {
-                    process.terminate()
-                }
+                terminateWithEscalation(process)
             }
         } catch {
-            if process.isRunning {
-                process.terminate()
-            }
-            process.waitUntilExit()
+            terminateWithEscalation(process)
+            stdoutPipe.fileHandleForReading.closeFile()
+            stderrPipe.fileHandleForReading.closeFile()
             _ = await stdoutTask.value
             _ = await stderrTask.value
             throw error
@@ -93,12 +91,23 @@ struct AmpCommandExecutor: Sendable {
             group.addTask {
                 try await Task.sleep(for: .seconds(max(0, timeout)))
                 if process.isRunning {
-                    process.terminate()
+                    terminateWithEscalation(process)
                 }
                 throw Error.timedOut
             }
             defer { group.cancelAll() }
             try await group.next()
+        }
+    }
+}
+
+private func terminateWithEscalation(_ process: Process) {
+    guard process.isRunning else { return }
+    let processIdentifier = process.processIdentifier
+    process.terminate()
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.25) {
+        if process.isRunning {
+            kill(processIdentifier, SIGKILL)
         }
     }
 }

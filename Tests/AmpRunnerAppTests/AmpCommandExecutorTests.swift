@@ -57,20 +57,75 @@ final class AmpCommandExecutorTests: XCTestCase {
         }
     }
 
+    func testCancellationReturnsPromptly() async throws {
+        let executable = try makeFixture("""
+        #!/bin/sh
+        trap '' TERM
+        while :; do :; done
+        """)
+        let task = Task {
+            try await execute(executable, timeout: 30)
+        }
+
+        try await Task.sleep(for: .milliseconds(100))
+        let start = Date()
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            XCTAssertLessThan(Date().timeIntervalSince(start), 2)
+        }
+    }
+
+    func testEscalatesToKillWhenProcessIgnoresTermination() async throws {
+        let executable = try makeFixture("""
+        #!/bin/sh
+        trap '' TERM
+        while :; do :; done
+        """)
+
+        let start = Date()
+        do {
+            _ = try await execute(executable, timeout: 0.1)
+            XCTFail("Expected timeout")
+        } catch AmpCommandExecutor.Error.timedOut {
+            XCTAssertLessThan(Date().timeIntervalSince(start), 2)
+        }
+    }
+
+    func testTimeoutReturnsWhenDescendantInheritsOutputPipes() async throws {
+        let executable = try makeFixture("""
+        #!/bin/sh
+        sleep 30 &
+        while :; do :; done
+        """)
+
+        let start = Date()
+        do {
+            _ = try await execute(executable, timeout: 0.1)
+            XCTFail("Expected timeout")
+        } catch AmpCommandExecutor.Error.timedOut {
+            XCTAssertLessThan(Date().timeIntervalSince(start), 2)
+        }
+    }
+
     func testRetainsBoundedOutputWhileDrainingBothStreams() async throws {
         let executable = try makeFixture("""
         #!/bin/sh
         i=0
-        while [ "$i" -lt 2000 ]; do
+        while [ "$i" -lt 262144 ]; do
           printf o
           printf e >&2
           i=$((i + 1))
         done
         """)
 
-        let result = try await execute(executable, outputLimit: 37)
+        let result = try await execute(executable, timeout: 10, outputLimit: 37)
 
         XCTAssertEqual(result.exitCode, 0)
+        // outputLimit is a per-stream retained-byte cap; both pipes continue draining.
         XCTAssertEqual(result.stdout, Data(repeating: Character("o").asciiValue!, count: 37))
         XCTAssertEqual(result.stderr, Data(repeating: Character("e").asciiValue!, count: 37))
     }
