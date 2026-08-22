@@ -92,7 +92,7 @@ final class RunnerCoordinator: ObservableObject {
         updateStateSource: ((RunnerProfile) -> RunnerUpdateStateSource)? = nil,
         restartUpdatedRunner: ((UUID) -> Void)? = nil,
         supervisorChanges: AnyPublisher<Void, Never>? = nil,
-        installCompletions: AnyPublisher<Void, Never>? = nil,
+        installCompletions: AnyPublisher<AmpInstallBatch, Never>? = nil,
         applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)? = nil,
         saveUpdatePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil
     ) {
@@ -149,12 +149,12 @@ final class RunnerCoordinator: ObservableObject {
             .store(in: &updateOrchestrationSubscriptions)
         if let installCompletions {
             installCompletions
-                .sink { [weak self] in self?.handleCompletedInstallBatch() }
+                .sink { [weak self] batch in self?.handleCompletedInstallBatch(batch) }
                 .store(in: &updateOrchestrationSubscriptions)
         } else {
             self.ampUpdateController.$lastCompletedInstallBatch
                 .compactMap { $0 }
-                .sink { [weak self] _ in self?.handleCompletedInstallBatch() }
+                .sink { [weak self] batch in self?.handleCompletedInstallBatch(batch) }
                 .store(in: &updateOrchestrationSubscriptions)
         }
         applyPreferences(updatePreferences)
@@ -501,12 +501,12 @@ final class RunnerCoordinator: ObservableObject {
         }
     }
 
-    private func handleCompletedInstallBatch() {
-        reevaluateUpdateNotifications(installedBatchCompleted: true)
+    private func handleCompletedInstallBatch(_ batch: AmpInstallBatch) {
+        reevaluateUpdateNotifications(completedBatch: batch)
         reevaluateUpdateRestarts()
     }
 
-    func reevaluateUpdateNotifications(installedBatchCompleted: Bool = false) {
+    func reevaluateUpdateNotifications(completedBatch: AmpInstallBatch? = nil) {
         let sources = profiles.map { ($0, updateSource(for: $0)) }
         let latest = sources.compactMap(\.1.latestVersion).max()
         let outdatedProfiles = sources.filter { _, source in
@@ -517,16 +517,25 @@ final class RunnerCoordinator: ObservableObject {
             try? RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: homeDirectoryPath)
                 .executableURL.standardizedFileURL.path
         })
-        let restartSources = sources.map(\.1).filter { source in
-            source.status.isRunning && requiresRestart(source)
+        let updatedResults = completedBatch?.results.compactMap { result -> (String, AmpVersion)? in
+            guard case let .updated(version) = result.outcome else { return nil }
+            return (URL(fileURLWithPath: result.path).standardizedFileURL.path, version)
+        } ?? []
+        let updatedPaths = Set(updatedResults.map(\.0))
+        let restartSources = sources.compactMap { profile, source -> RunnerUpdateStateSource? in
+            guard let path = try? RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: homeDirectoryPath)
+                .executableURL.standardizedFileURL.path,
+                  updatedPaths.contains(path), requiresRestart(source) else { return nil }
+            switch source.status {
+            case .online where !source.hasActiveThread, .working: return source
+            default: return nil
+            }
         }
         let idleCount = restartSources.filter { source in
             if case .online = source.status { return !source.hasActiveThread }
             return false
         }.count
-        let installedBatchVersion = installedBatchCompleted
-            ? restartSources.compactMap(\.installedVersion).max()
-            : nil
+        let installedBatchVersion = updatedResults.map(\.1).max()
         notifier.notifyUpdates(input: AmpUpdateNotificationInput(
             latestVersion: latest,
             installedBatchVersion: installedBatchVersion,

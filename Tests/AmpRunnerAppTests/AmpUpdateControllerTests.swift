@@ -177,6 +177,7 @@ final class AmpUpdateControllerTests: XCTestCase {
         XCTAssertEqual(arguments, [["version"], ["update", "--porcelain"]])
         XCTAssertEqual(controller.installedVersions[url.standardizedFileURL.path], AmpVersion("2.0.0"))
         XCTAssertEqual(controller.lastCompletedInstallBatch?.results.count, 1)
+        XCTAssertEqual(controller.lastCompletedInstallBatch?.results.first?.outcome, .updated(AmpVersion("2.0.0")!))
         XCTAssertEqual(controller.installStates[url.standardizedFileURL.path], .succeeded(AmpVersion("2.0.0")!))
     }
 
@@ -191,8 +192,9 @@ final class AmpUpdateControllerTests: XCTestCase {
         controller.synchronizeExecutables([AmpExecutableRegistration(executableURL: url)])
         await controller.checkNow()
         await controller.installOutdatedExecutables(automatic: true)
-        await controller.installOutdatedExecutables(automatic: true)
         XCTAssertEqual(controller.installedVersions[url.standardizedFileURL.path], AmpVersion("1.0.0"))
+        XCTAssertEqual(controller.lastCompletedInstallBatch?.results.first?.outcome, .noUpdateNeeded)
+        await controller.installOutdatedExecutables(automatic: true)
         let requestCount = await recorder.requests.count
         XCTAssertEqual(requestCount, 2)
     }

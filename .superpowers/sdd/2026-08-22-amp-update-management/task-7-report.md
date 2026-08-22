@@ -35,3 +35,14 @@ After adding `RunnerUpdateNotificationTests`, the focused hosted build failed on
 ## Concerns
 
 The Updates pane UI is scheduled for Task 8. Task 7 adds the `.updates` routing target now, so the action state is correct but the actual tab will appear when that pane is implemented.
+
+## Fix Round 1
+
+- Carried the completed `AmpInstallBatch` into notification orchestration and added a porcelain-authoritative outcome (`updated`, `noUpdateNeeded`, or `failed`) to each result.
+- Restart aggregates now join profiles to only the standardized executable paths successfully updated by that batch. Empty, all-failed, and no-update batches cannot reuse unrelated restart state or versions.
+- Aggregate counts include only idle `.online` runners without an active thread and `.working` runners; starting, error, and stopped runners are excluded.
+- Added coverage for mixed outcomes, unrelated prior restart state, empty/failed/no-update batches, starting exclusion, automatic wording/actions, coordinator action effects, and porcelain outcomes.
+- RED: focused hosted tests failed to compile because batch outcomes and batch-carrying completion publishers did not yet exist.
+- GREEN: focused hosted notification/controller/orchestration tests passed (35 tests); `swift test` passed (149 tests); `git diff --check` passed.
+- Self-review: notification identity remains the actual updated version, profile counts are path-joined from the completed batch, and one policy evaluation produces at most one aggregate restart notification. Porcelain remains authoritative with no post-install probe; notification preference and delivery state remain independent.
+- Deferred as requested: version-regression dedupe and broader integration cleanup (Low findings).

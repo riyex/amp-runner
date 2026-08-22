@@ -35,9 +35,16 @@ enum AmpExecutableInstallState: Equatable, Sendable {
 }
 
 struct AmpInstallBatch: Equatable, Sendable {
+    enum Outcome: Equatable, Sendable {
+        case updated(AmpVersion)
+        case noUpdateNeeded
+        case failed
+    }
+
     struct Result: Equatable, Sendable {
         let path: String
         let state: AmpExecutableInstallState
+        let outcome: Outcome
     }
 
     let completedAt: Date
@@ -306,6 +313,7 @@ final class AmpUpdateController: ObservableObject {
             }
             installStates[path] = .installing
             let finalState: AmpExecutableInstallState
+            let outcome: AmpInstallBatch.Outcome
             do {
                 let request = AmpCommandRequest(
                     executableURL: url,
@@ -331,16 +339,19 @@ final class AmpUpdateController: ObservableObject {
                         probedEnvironments[path] = environment
                     }
                     finalState = .succeeded(version)
+                    outcome = .updated(version)
                 case .noUpdateNeeded:
                     finalState = .succeeded(installed)
+                    outcome = .noUpdateNeeded
                 }
             } catch {
                 finalState = .failed(bounded(error.localizedDescription))
+                outcome = .failed
             }
             if registrationGenerations[path] == registrationGeneration,
                registeredEnvironments[path] == environment {
                 installStates[path] = finalState
-                results.append(.init(path: path, state: finalState))
+                results.append(.init(path: path, state: finalState, outcome: outcome))
             } else {
                 discardedStaleResult = true
             }

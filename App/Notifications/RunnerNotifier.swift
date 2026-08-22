@@ -41,7 +41,7 @@ enum RunnerUpdateNotificationBuilder {
         case let .restartRequired(_, runnerCount, idleCount, workingCount, automaticallyRestartsWhenIdle):
             let body = automaticallyRestartsWhenIdle
                 ? "\(idleCount) \(idleCount == 1 ? "runner" : "runners") restarted; \(workingCount) pending until idle."
-                : "\(runnerCount) runners need a restart: \(idleCount) idle, \(workingCount) working."
+                : "\(runnerCount) \(runnerCount == 1 ? "runner needs" : "runners need") a restart: \(idleCount) idle, \(workingCount) working."
             return RunnerUpdateNotificationRequest(
                 title: "Restart runners to finish updating Amp",
                 body: body,

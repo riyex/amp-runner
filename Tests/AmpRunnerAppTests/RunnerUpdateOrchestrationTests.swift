@@ -18,11 +18,56 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         XCTAssertEqual(fixture.updateRequests.count, 1)
 
         fixture.installed[fixture.path] = AmpVersion("2.0.0")
-        fixture.installCompletions.send()
+        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
         XCTAssertEqual(fixture.updateRequests.count, 2)
         XCTAssertEqual(fixture.updateRequests.last?.body, "2 runners need a restart: 1 idle, 1 working.")
-        fixture.installCompletions.send()
+        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
         XCTAssertEqual(fixture.updateRequests.count, 2)
+    }
+
+    @MainActor
+    func testCompletedBatchNotifiesOnlyProfilesWhosePathsWereActuallyUpdated() throws {
+        let fixture = try Fixture(sharedExecutable: false)
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.installed[fixture.secondPath] = AmpVersion("1.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.snapshots[fixture.second.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+
+        fixture.complete([
+            .init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!)),
+            .init(path: fixture.secondPath, state: .failed("denied"), outcome: .failed)
+        ])
+
+        XCTAssertEqual(fixture.updateRequests.map(\.body), ["1 runner needs a restart: 1 idle, 0 working."])
+    }
+
+    @MainActor
+    func testEmptyFailedAndNoUpdateBatchesIgnoreUnrelatedPriorRestartState() throws {
+        let fixture = try Fixture()
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.load()
+
+        fixture.complete([])
+        fixture.complete([.init(path: fixture.path, state: .failed("denied"), outcome: .failed)])
+        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .noUpdateNeeded)])
+
+        XCTAssertTrue(fixture.updateRequests.isEmpty)
+    }
+
+    @MainActor
+    func testRestartAggregateExcludesStartingAndUsesAutomaticActionsAndWording() throws {
+        let fixture = try Fixture(preferences: .init(restartsUpdatedRunnersWhenIdle: true))
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .starting, active: false, running: AmpVersion("1.0.0"))
+        fixture.snapshots[fixture.second.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+
+        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
+
+        XCTAssertEqual(fixture.updateRequests.last?.body, "0 runners restarted; 1 pending until idle.")
+        XCTAssertEqual(fixture.updateRequests.last?.actions, [.openUpdates])
     }
 
     @MainActor
@@ -112,7 +157,7 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
         fixture.snapshots[fixture.second.id] = .init(status: .starting, active: false, running: AmpVersion("1.0.0"))
         fixture.load()
-        fixture.installCompletions.send()
+        fixture.complete([.init(path: fixture.path, state: .succeeded(AmpVersion("2.0.0")!), outcome: .updated(AmpVersion("2.0.0")!))])
         XCTAssertEqual(fixture.restarts, [fixture.first.id])
         XCTAssertFalse(fixture.coordinator.queuedUpdateRestartProfileIDs.contains(fixture.second.id))
     }
@@ -128,6 +173,22 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         XCTAssertEqual(fixture.restarts, [])
         fixture.coordinator.restartAllNow()
         XCTAssertEqual(fixture.restarts, [fixture.first.id])
+    }
+
+    @MainActor
+    func testNotificationActionsRouteToCoordinatorEffectsWithoutThreadResponses() throws {
+        let fixture = try Fixture()
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+
+        fixture.coordinator.notifier.handleUpdateAction(.restartAllWhenIdle)
+        XCTAssertEqual(fixture.coordinator.queuedUpdateRestartProfileIDs, [fixture.first.id])
+        XCTAssertNil(fixture.coordinator.logViewerProfileID)
+
+        fixture.coordinator.notifier.handleUpdateAction(.defaultOpen)
+        XCTAssertEqual(fixture.coordinator.settingsPane, .updates)
+        XCTAssertNil(fixture.coordinator.logViewerProfileID)
     }
 
     @MainActor
@@ -207,6 +268,7 @@ private final class Fixture {
     struct Snapshot { var status: RunnerStatus; var active: Bool; var running: AmpVersion? }
     let root: URL
     let path: String
+    let secondPath: String
     let first: RunnerProfile
     let second: RunnerProfile
     var coordinator: RunnerCoordinator! = nil
@@ -218,23 +280,25 @@ private final class Fixture {
     var appliedPreferences: [AmpUpdatePreferences] = []
     var updateRequests: [RunnerUpdateNotificationRequest] = []
     let changes = PassthroughSubject<Void, Never>()
-    let installCompletions = PassthroughSubject<Void, Never>()
+    let installCompletions = PassthroughSubject<AmpInstallBatch, Never>()
 
     init(
         preferences: AmpUpdatePreferences? = nil,
         preferencesStore suppliedStore: AmpUpdatePreferencesStore? = nil,
         controller: AmpUpdateController? = nil,
+        sharedExecutable: Bool = true,
         savePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil
     ) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         path = root.appendingPathComponent("amp").path
+        secondPath = sharedExecutable ? path : root.appendingPathComponent("amp-two").path
         let firstDirectory = root.appendingPathComponent("one")
         let secondDirectory = root.appendingPathComponent("two")
         try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: secondDirectory, withIntermediateDirectories: true)
         first = RunnerProfile(name: "One", runnerID: "one", workingDirectoryPath: firstDirectory.path, ampExecutablePath: path)
-        second = RunnerProfile(name: "Two", runnerID: "two", workingDirectoryPath: secondDirectory.path, ampExecutablePath: path)
+        second = RunnerProfile(name: "Two", runnerID: "two", workingDirectoryPath: secondDirectory.path, ampExecutablePath: secondPath)
         let profileStore = RunnerProfileStore(fileURL: root.appendingPathComponent("profiles.json"), io: FileManagerProfileStoreIO())
         _ = try profileStore.upsert(first, into: [])
         _ = try profileStore.upsert(second, into: [first])
@@ -264,7 +328,7 @@ private final class Fixture {
                     status: snapshot?.status ?? .stopped,
                     hasActiveThread: snapshot?.active ?? false,
                     runningVersion: snapshot?.running,
-                    installedVersion: controller?.installedVersions[self?.path ?? ""] ?? self?.installed[self?.path ?? ""],
+                    installedVersion: controller?.installedVersions[profile.ampExecutablePath] ?? self?.installed[profile.ampExecutablePath],
                     latestVersion: self?.latest,
                     installState: self?.installStates[self?.path ?? ""]
                 )
@@ -278,4 +342,8 @@ private final class Fixture {
     }
 
     func load() { coordinator.onLaunch() }
+
+    func complete(_ results: [AmpInstallBatch.Result]) {
+        installCompletions.send(.init(completedAt: Date(), results: results))
+    }
 }
