@@ -137,3 +137,29 @@ Passed 149 tests with 0 failures. `git diff --check` also passed.
 ### Remaining concern
 
 - Hosted Xcode tests still emit the pre-existing macOS service/bookmark diagnostics. Reusing DerivedData can also trigger duplicate `AmpRunner.app` product output; a clean/fresh DerivedData path succeeds. The deferred Low fixture cleanup was not revisited.
+
+## Fix Round 3
+
+### Outcome
+
+- Probe flights, successful probe cache entries, and automatic-attempt deduplication now include the command environment. Registration environment changes cancel the old flight and invalidate its matching metadata before subsequent central work.
+- Completion publication remains token-guarded: an uncooperative canceled probe can return to its original caller but cannot overwrite the refreshed probe's published state.
+- The coordinator test now saves PATH settings while an old central probe is pending, starts replacement central work, and asserts the resulting `AmpCommandRequest.environment["PATH"]` begins with the newly resolved directory. The replacement publishes `2.0.0`; the late old completion cannot replace it.
+- Standardized-path deduplication still chooses the first registration environment deterministically, and first registration does not trigger spurious invalidation.
+
+### TDD and verification evidence
+
+- The behavioral test was written first. Its initial focused invocation was blocked before Swift compilation by the known duplicate `AmpRunner.app` product-output error. A temporary, uncommitted distinct App Store product name allowed authoritative hosted testing; that temporary project setting was removed afterward.
+- Focused controller/supervisor/registration tests: `TEST SUCCEEDED`, 22 tests, 0 failures (12 controller, 9 supervisor, 1 coordinator registration).
+- Full `swift test`: 149 tests, 0 failures.
+- `git diff --check`: passed.
+
+### Self-review
+
+- Environment cache matching: both in-flight reuse and successful cached-version reuse require exact environment equality; automatic update attempt dedupe does too.
+- Registration synchronization: environments are collected with standardized path keys and first-registration wins before changes are compared, preserving deterministic shared-path behavior.
+- Stale completion: changed-environment flights are canceled and removed; replacement flights receive new tokens, so old completions fail the token guard and cannot publish versions or errors.
+
+### Remaining concern
+
+- The checked-in project still has the pre-existing duplicate `AmpRunner.app` output issue when both app targets share a product name. Hosted verification required the temporary test-only product-name workaround described above. Deferred Low fixture cleanup remains out of scope.

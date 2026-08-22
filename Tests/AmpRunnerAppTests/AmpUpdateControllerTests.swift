@@ -302,6 +302,7 @@ private actor GatedCommands {
 
     init(results: [String]) { self.results = results }
     var requestCount: Int { requests.count }
+    var recordedRequests: [AmpCommandRequest] { requests }
 
     func execute(_ request: AmpCommandRequest) async throws -> AmpCommandResult {
         let index = requests.count
@@ -355,13 +356,14 @@ private actor SleepRecorder {
 
 final class RunnerCoordinatorUpdateRegistrationTests: XCTestCase {
     @MainActor
-    func testLoadEditDeleteAndPathSaveResynchronizeStandardizedExecutablePaths() throws {
+    func testPathSaveInvalidatesOldProbeAndNextCentralProbeUsesResolvedPath() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let io = MemoryProfileIO()
         let store = RunnerProfileStore(fileURL: root.appendingPathComponent("profiles.json"), io: io)
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let pathStore = RunnerPathSettingsStore(defaults: defaults, key: "test")
-        let controller = AmpUpdateController()
+        let commands = GatedCommands(results: ["1.0.0\n", "2.0.0\n"])
+        let controller = AmpUpdateController(executeCommand: { try await commands.execute($0) })
         var profile = RunnerProfile(
             name: "One", runnerID: "one", workingDirectoryPath: root.path,
             ampExecutablePath: root.appendingPathComponent("bin/../amp").path
@@ -379,12 +381,30 @@ final class RunnerCoordinatorUpdateRegistrationTests: XCTestCase {
         try coordinator.persist(profile)
         XCTAssertEqual(controller.registeredExecutableURLs.map(\.path), [profile.ampExecutablePath])
 
+        let oldProbe = Task {
+            await controller.installedVersion(
+                for: URL(fileURLWithPath: profile.ampExecutablePath),
+                environment: coordinator.runnerEnvironment()
+            )
+        }
+        await commands.waitForRequestCount(1)
         try coordinator.savePathDirectories([root.path])
         XCTAssertEqual(controller.registeredExecutableURLs.map(\.path), [profile.ampExecutablePath])
-        XCTAssertEqual(
-            controller.registeredEnvironment(for: URL(fileURLWithPath: profile.ampExecutablePath))?["PATH"]?.split(separator: ":").first,
-            Substring(root.path)
-        )
+
+        let refreshedProbe = Task {
+            await controller.installedVersion(
+                for: URL(fileURLWithPath: profile.ampExecutablePath),
+                environment: coordinator.runnerEnvironment()
+            )
+        }
+        await commands.waitForRequestCount(2)
+        let requests = await commands.recordedRequests
+        XCTAssertEqual(requests[1].environment["PATH"]?.split(separator: ":").first, Substring(root.path))
+        await commands.resume(at: 1)
+        let refreshedVersion = await refreshedProbe.value
+        XCTAssertEqual(refreshedVersion, AmpVersion("2.0.0"))
+        await commands.resume(at: 0)
+        _ = await oldProbe.value
 
         try coordinator.delete(profile)
         XCTAssertTrue(controller.registeredExecutableURLs.isEmpty)

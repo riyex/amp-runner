@@ -71,6 +71,7 @@ final class AmpUpdateController: ObservableObject {
     private var probeTasks: [String: ProbeFlight] = [:]
     private var probedIdentities: [String: AmpExecutableIdentity] = [:]
     private var probedRelease: [String: AmpVersion?] = [:]
+    private var probedEnvironments: [String: [String: String]] = [:]
     private var automaticAttempts: [String: AutomaticAttempt] = [:]
     private var installBatchTask: Task<Void, Never>?
     private var registeredEnvironments: [String: [String: String]] = [:]
@@ -102,19 +103,29 @@ final class AmpUpdateController: ObservableObject {
             return seen.insert(url.path).inserted ? url : nil
         }
         let paths = Set(registeredExecutableURLs.map(\.path))
-        registeredEnvironments.removeAll(keepingCapacity: true)
+        var synchronizedEnvironments: [String: [String: String]] = [:]
         for registration in registrations {
             let path = registration.executableURL.standardizedFileURL.path
-            if paths.contains(path), registeredEnvironments[path] == nil {
-                registeredEnvironments[path] = registration.environment
+            if paths.contains(path), synchronizedEnvironments[path] == nil {
+                synchronizedEnvironments[path] = registration.environment
             }
         }
+        let changedEnvironmentPaths = paths.filter {
+            registeredEnvironments[$0] != nil && registeredEnvironments[$0] != synchronizedEnvironments[$0]
+        }
+        registeredEnvironments = synchronizedEnvironments
         installStates = installStates.filter { paths.contains($0.key) }
         installedVersions = installedVersions.filter { paths.contains($0.key) }
         probeErrors = probeErrors.filter { paths.contains($0.key) }
-        for (path, flight) in probeTasks where !paths.contains(path) {
+        for (path, flight) in probeTasks where !paths.contains(path) || changedEnvironmentPaths.contains(path) {
             flight.task.cancel()
             probeTasks[path] = nil
+        }
+        for path in changedEnvironmentPaths {
+            probedIdentities[path] = nil
+            probedRelease[path] = nil
+            probedEnvironments[path] = nil
+            automaticAttempts[path] = nil
         }
     }
 
@@ -181,12 +192,14 @@ final class AmpUpdateController: ObservableObject {
         let path = url.path
         let identity = readIdentity(url)
         let release = latestVersion
-        if let flight = probeTasks[path], flight.identity == identity, flight.release == release {
+        if let flight = probeTasks[path], flight.identity == identity, flight.release == release,
+           flight.environment == environment {
             return await flight.task.value
         }
         if !force, let version = installedVersions[path],
            probedIdentities[path] == identity,
-           probedRelease[path] == release {
+           probedRelease[path] == release,
+           probedEnvironments[path] == environment {
             return version
         }
 
@@ -213,7 +226,13 @@ final class AmpUpdateController: ObservableObject {
                 return nil
             }
         }
-        probeTasks[path] = ProbeFlight(token: token, identity: identity, release: release, task: task)
+        probeTasks[path] = ProbeFlight(
+            token: token,
+            identity: identity,
+            release: release,
+            environment: environment,
+            task: task
+        )
         let version = await task.value
         guard probeTasks[path]?.token == token,
               registeredExecutableURLs.contains(where: { $0.path == path }) else {
@@ -222,6 +241,7 @@ final class AmpUpdateController: ObservableObject {
         probeTasks[path] = nil
         probedIdentities[path] = identity
         probedRelease[path] = release
+        probedEnvironments[path] = environment
         if let version {
             installedVersions[path] = version
             probeErrors[path] = nil
@@ -240,7 +260,12 @@ final class AmpUpdateController: ObservableObject {
         let urls: [URL]
         if automatic {
             urls = registeredExecutableURLs.filter { url in
-                let attempt = AutomaticAttempt(version: latestVersion, identity: readIdentity(url))
+                let environment = registeredEnvironments[url.path] ?? ProcessInfo.processInfo.environment
+                let attempt = AutomaticAttempt(
+                    version: latestVersion,
+                    identity: readIdentity(url),
+                    environment: environment
+                )
                 guard automaticAttempts[url.path] != attempt else { return false }
                 automaticAttempts[url.path] = attempt
                 return true
@@ -283,6 +308,7 @@ final class AmpUpdateController: ObservableObject {
                     installedVersions[path] = version
                     probedIdentities[path] = readIdentity(url)
                     probedRelease[path] = latestVersion
+                    probedEnvironments[path] = environment
                     finalState = .succeeded(version)
                 case .noUpdateNeeded:
                     finalState = .succeeded(installed)
@@ -325,12 +351,14 @@ private struct ProbeFlight {
     let token: UUID
     let identity: AmpExecutableIdentity
     let release: AmpVersion?
+    let environment: [String: String]
     let task: Task<AmpVersion?, Never>
 }
 
 private struct AutomaticAttempt: Equatable {
     let version: AmpVersion
     let identity: AmpExecutableIdentity
+    let environment: [String: String]
 }
 
 private enum ControllerError: LocalizedError {
