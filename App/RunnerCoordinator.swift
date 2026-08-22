@@ -47,7 +47,7 @@ final class RunnerCoordinator: ObservableObject {
     @Published var logViewerProfileID: UUID?
 
     /// Which pane the Settings window shows. Set by the menu before opening the window.
-    @Published var settingsPane: SettingsPane = .profiles
+    @Published var settingsPane: SettingsPane = .general
 
     /// An editor the menu asked to be opened. Consumed by `ProfileListView`.
     @Published var draftRequest: ProfileDraftRequest = .none
@@ -493,6 +493,22 @@ final class RunnerCoordinator: ObservableObject {
                   !updateRestartProfileIDsInFlight.contains(profile.id) else { continue }
             queuedUpdateRestartProfileIDs.remove(profile.id)
             beginUpdateRestart(profile.id)
+        }
+    }
+
+    var restartRequiredRunnerCount: Int {
+        profiles.reduce(into: 0) { count, profile in
+            let source = updateSource(for: profile)
+            if source.status.isRunning && requiresRestart(source) { count += 1 }
+        }
+    }
+
+    var workingRestartRequiredRunnerCount: Int {
+        profiles.reduce(into: 0) { count, profile in
+            let source = updateSource(for: profile)
+            guard source.status.isRunning, requiresRestart(source) else { return }
+            if case .working = source.status { count += 1 }
+            else if source.hasActiveThread { count += 1 }
         }
     }
 

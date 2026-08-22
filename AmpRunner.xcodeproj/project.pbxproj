@@ -18,17 +18,21 @@
 		223D163D652319178E6B8245 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5ECC6E9F4AC9D35EAA8A3D72 /* Assets.xcassets */; };
 		2387B905ADC6325A9FCECC2F /* AmpCommandExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2E679658F56B41A5DB4DFF /* AmpCommandExecutor.swift */; };
 		24AD7A8E6740E4B1A0696FD8 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AB5EBC6543493CAD0990EB /* LaunchAtLoginManager.swift */; };
+		2CB748527B760CB19638972E /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12C00E68535FE38B3B4F7112 /* GeneralSettingsView.swift */; };
 		2F882D3F81CD99062A2CA836 /* ProcessSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1277F831EBF46C01F7855683 /* ProcessSupervisor.swift */; };
 		347AF39175C64A0168B3C07C /* AmpRunnerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */; };
 		34B269EE535502749168B0B2 /* SecurityScopedBookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */; };
 		35EE6E9CCBC2A20F0C747D58 /* EnvironmentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */; };
 		37AE4AC5EAFA72F48F7CA85F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B99613250014A596B8AF80 /* main.swift */; };
+		431021FA27483EFF8A7D5C9A /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12C00E68535FE38B3B4F7112 /* GeneralSettingsView.swift */; };
 		476F897AA3EA445284DA2499 /* AmpUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F6F5306F16D96B410137D1 /* AmpUpdateController.swift */; };
+		4EA51F4116DC2AC4D5BDD134 /* UpdateSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72E38EC69D393E58284E1EF0 /* UpdateSettingsView.swift */; };
 		581D0556259650A7038479F1 /* AmpUpdateControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */; };
 		6B71978562E46A0BD5E6948F /* RunnerCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B77A4534C9C1091AC379451E /* RunnerCoordinator.swift */; };
 		8617EF07C6A9EFA48EF5E9F7 /* ProcessSupervisorVersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E8A30E470847A1D06772BD1 /* ProcessSupervisorVersionTests.swift */; };
 		8AB0982C6E0EE0B7B87BBB0B /* ProfileListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */; };
 		8BBBEE0BD0B12925BFFE7C94 /* AmpRunnerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */; };
+		97BBA2F44C7A9BC20C49CD83 /* UpdateSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72E38EC69D393E58284E1EF0 /* UpdateSettingsView.swift */; };
 		98F34F6D0A4534050D101453 /* AmpCommandExecutorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */; };
 		A3AA0B13CA68BEE0F67083E1 /* RunnerUpdateOrchestrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE88B05FA3D48010C410E93C /* RunnerUpdateOrchestrationTests.swift */; };
 		AAA1C11EF127C31428F895EC /* SecurityScopedBookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */; };
@@ -104,6 +108,7 @@
 		0721E5366B773A2587CBF182 /* StartConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartConfirmationView.swift; sourceTree = "<group>"; };
 		10F8E3E49C383BC7573F5E0E /* project.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = project.yml; sourceTree = "<group>"; };
 		1277F831EBF46C01F7855683 /* ProcessSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessSupervisor.swift; sourceTree = "<group>"; };
+		12C00E68535FE38B3B4F7112 /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
 		1957B302E5A2AAB81C1F1FF5 /* MenuBarContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarContentView.swift; sourceTree = "<group>"; };
 		1E8A30E470847A1D06772BD1 /* ProcessSupervisorVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessSupervisorVersionTests.swift; sourceTree = "<group>"; };
 		31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedBookmarkStore.swift; sourceTree = "<group>"; };
@@ -115,6 +120,7 @@
 		68D555C47FE6F749518E5649 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		69188BDA6C26624B251A71A9 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 		6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpUpdateControllerTests.swift; sourceTree = "<group>"; };
+		72E38EC69D393E58284E1EF0 /* UpdateSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSettingsView.swift; sourceTree = "<group>"; };
 		76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpCommandExecutorTests.swift; sourceTree = "<group>"; };
 		76F4C85BF1067AE01B76174E /* AmpRunnerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpRunnerApp.swift; sourceTree = "<group>"; };
 		77AFCE9E4D63ED4483053CF3 /* AmpRunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AmpRunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -290,11 +296,13 @@
 			isa = PBXGroup;
 			children = (
 				81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */,
+				12C00E68535FE38B3B4F7112 /* GeneralSettingsView.swift */,
 				AF447E482BEEC48CD3319EA0 /* LogViewerView.swift */,
 				1957B302E5A2AAB81C1F1FF5 /* MenuBarContentView.swift */,
 				B99C9E4D20EA6093628E900F /* ProfileEditorView.swift */,
 				66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */,
 				0721E5366B773A2587CBF182 /* StartConfirmationView.swift */,
+				72E38EC69D393E58284E1EF0 /* UpdateSettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -545,6 +553,7 @@
 				347AF39175C64A0168B3C07C /* AmpRunnerApp.swift in Sources */,
 				0953DD1A441D7DDB9AA97841 /* AmpUpdateController.swift in Sources */,
 				09F3376350CA6683A5440210 /* EnvironmentSettingsView.swift in Sources */,
+				2CB748527B760CB19638972E /* GeneralSettingsView.swift in Sources */,
 				FEE499EA7F8E1D8047030CA5 /* LaunchAtLoginManager.swift in Sources */,
 				B4B1BBEC01033AFB70C47B15 /* LogViewerView.swift in Sources */,
 				C48F20F4734CD699A6DD119D /* MenuBarContentView.swift in Sources */,
@@ -555,6 +564,7 @@
 				C10F3EEEBD5B5EF742DD734D /* RunnerNotifier.swift in Sources */,
 				34B269EE535502749168B0B2 /* SecurityScopedBookmarkStore.swift in Sources */,
 				E274BE4D46F0D4A1D43D7880 /* StartConfirmationView.swift in Sources */,
+				4EA51F4116DC2AC4D5BDD134 /* UpdateSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -574,6 +584,7 @@
 				8BBBEE0BD0B12925BFFE7C94 /* AmpRunnerApp.swift in Sources */,
 				476F897AA3EA445284DA2499 /* AmpUpdateController.swift in Sources */,
 				35EE6E9CCBC2A20F0C747D58 /* EnvironmentSettingsView.swift in Sources */,
+				431021FA27483EFF8A7D5C9A /* GeneralSettingsView.swift in Sources */,
 				24AD7A8E6740E4B1A0696FD8 /* LaunchAtLoginManager.swift in Sources */,
 				1ABB3C5C0478661CED30D482 /* LogViewerView.swift in Sources */,
 				E8E7C7AF0D6A3B1967920965 /* MenuBarContentView.swift in Sources */,
@@ -584,6 +595,7 @@
 				146028EDADDDE4B2F391B3B8 /* RunnerNotifier.swift in Sources */,
 				AAA1C11EF127C31428F895EC /* SecurityScopedBookmarkStore.swift in Sources */,
 				F6A026B9E0A88D9A16143C64 /* StartConfirmationView.swift in Sources */,
+				97BBA2F44C7A9BC20C49CD83 /* UpdateSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

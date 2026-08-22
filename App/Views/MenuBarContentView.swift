@@ -4,10 +4,11 @@ import AmpRunnerCore
 
 /// Which pane the Settings window should show when it is next opened from the menu.
 enum SettingsPane: Hashable {
-    case profiles
+    case general
+    case runners
     case environment
-    case logs
     case updates
+    case logs
 }
 
 /// Opens the app's single `Settings` scene from AppKit.
@@ -29,9 +30,6 @@ enum SettingsWindowOpener {
 /// Contents of the menu bar dropdown.
 struct MenuBarContentView: View {
     @ObservedObject var coordinator: RunnerCoordinator
-    @ObservedObject var launchAtLogin: LaunchAtLoginManager
-    @ObservedObject var notifier: RunnerNotifier
-
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -55,7 +53,7 @@ struct MenuBarContentView: View {
 
         if coordinator.profiles.isEmpty {
             Text("No runner profiles yet")
-            Button("New Profile…") { open(.profiles, draft: .new) }
+            Button("New Runner…") { open(.runners, draft: .new) }
         } else {
             ForEach(coordinator.profiles) { profile in
                 profileMenu(for: profile)
@@ -67,16 +65,10 @@ struct MenuBarContentView: View {
 
         Divider()
 
-        Button("Manage Profiles…") { open(.profiles, draft: .none) }
+        Button("Manage Runners…") { open(.runners, draft: .none) }
         Button("Environment…") { open(.environment, draft: .none) }
+        Button(updatesMenuTitle) { open(.updates, draft: .none) }
         Button("Check Amp Settings") { checkAmpSettings() }
-
-        Toggle("Start Amp Runner at Login", isOn: launchAtLoginBinding)
-        Toggle("Notify on Thread Start / Finish / Failure", isOn: $notifier.isEnabled)
-
-        if launchAtLogin.requiresApproval {
-            Text("Login item needs approval in System Settings › General › Login Items")
-        }
 
         Divider()
 
@@ -95,6 +87,11 @@ struct MenuBarContentView: View {
         let status = coordinator.status(for: profile)
 
         Menu("\(statusGlyph(status))  \(profile.name) — \(status.detailedDescription)") {
+            Text(updateDescription(for: profile))
+            if case .restartRequired = coordinator.updateState(for: profile), status.isRunning {
+                Button("Restart to Update") { coordinator.restartToUpdate(profile) }
+            }
+            Divider()
             if status.isRunning {
                 Button("Stop") { coordinator.stop(profile) }
                 Button("Restart") { coordinator.restart(profile) }
@@ -133,8 +130,8 @@ struct MenuBarContentView: View {
 
             Divider()
 
-            Button("Edit…") { open(.profiles, draft: .edit(profile.id)) }
-            Button("Duplicate…") { open(.profiles, draft: .duplicate(profile.id)) }
+            Button("Edit…") { open(.runners, draft: .edit(profile.id)) }
+            Button("Duplicate…") { open(.runners, draft: .duplicate(profile.id)) }
         }
     }
 
@@ -157,7 +154,7 @@ struct MenuBarContentView: View {
     private func startFromMenu(_ profile: RunnerProfile) {
         coordinator.requestStart(profile)
         if coordinator.pendingConfirmation != nil {
-            open(.profiles, draft: .none)
+            open(.runners, draft: .none)
         }
     }
 
@@ -193,11 +190,20 @@ struct MenuBarContentView: View {
         ])
     }
 
-    private var launchAtLoginBinding: Binding<Bool> {
-        Binding(
-            get: { launchAtLogin.isEnabled },
-            set: { _ = launchAtLogin.setEnabled($0) }
-        )
+    private var updatesMenuTitle: String {
+        let count = coordinator.restartRequiredRunnerCount
+        return count == 0 ? "Updates…" : "Updates… — \(count) runner\(count == 1 ? "" : "s") need restart"
+    }
+
+    private func updateDescription(for profile: RunnerProfile) -> String {
+        switch coordinator.updateState(for: profile) {
+        case .versionUnknown: return "Amp version unknown"
+        case .upToDate(let version): return "Amp \(version)"
+        case .updateAvailable(_, let latest): return "Update available: \(latest)"
+        case .installing(let installed): return installed.map { "Installing update (Amp \($0))" } ?? "Installing update"
+        case .restartRequired(_, let installed): return "Restart required for \(installed)"
+        case .updateFailed(let installed, _): return installed.map { "Amp \($0) — update failed" } ?? "Amp version unknown — update failed"
+        }
     }
 
     /// Only offer one-click enabling when the file could actually be parsed. A malformed

@@ -12,9 +12,7 @@ struct AmpRunnerApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuBarContentView(
-                coordinator: appDelegate.coordinator,
-                launchAtLogin: appDelegate.coordinator.launchAtLogin,
-                notifier: appDelegate.coordinator.notifier
+                coordinator: appDelegate.coordinator
             )
         } label: {
             MenuBarLabelView(coordinator: appDelegate.coordinator)
@@ -200,13 +198,21 @@ struct SettingsRootView: View {
 
     var body: some View {
         TabView(selection: $selectedPane) {
+            GeneralSettingsView(coordinator: coordinator)
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsPane.general)
+
             ProfileListView(coordinator: coordinator)
-                .tabItem { Label("Profiles", systemImage: "list.bullet") }
-                .tag(SettingsPane.profiles)
+                .tabItem { Label("Runners", systemImage: "list.bullet") }
+                .tag(SettingsPane.runners)
 
             EnvironmentSettingsView(coordinator: coordinator)
                 .tabItem { Label("Environment", systemImage: "terminal") }
                 .tag(SettingsPane.environment)
+
+            UpdateSettingsView(coordinator: coordinator)
+                .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
+                .tag(SettingsPane.updates)
 
             LogViewerView(coordinator: coordinator)
                 .tabItem { Label("Logs", systemImage: "text.alignleft") }
