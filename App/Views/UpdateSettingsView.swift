@@ -10,12 +10,21 @@ struct UpdateSettingsView: View {
         Form {
             Section("Automatic Updates") {
                 preferenceToggle("Automatically check for updates", keyPath: \.automaticallyChecksForUpdates)
+                Group {
+                    preferenceToggle("Automatically install updates", keyPath: \.automaticallyInstallsUpdates)
+                    preferenceToggle("Restart updated runners when idle", keyPath: \.restartsUpdatedRunnersWhenIdle)
+                }
+                .disabled(!coordinator.updatePreferences.automaticallyChecksForUpdates)
+                .padding(.leading, 20)
                 preferenceToggle("Notify when updates are available", keyPath: \.sendsUpdateNotifications)
-                preferenceToggle("Automatically install updates", keyPath: \.automaticallyInstallsUpdates)
-                    .disabled(!coordinator.updatePreferences.automaticallyChecksForUpdates)
-                preferenceToggle("Restart updated runners when idle", keyPath: \.restartsUpdatedRunnersWhenIdle)
-                    .disabled(!coordinator.updatePreferences.automaticallyChecksForUpdates)
-                if let preferenceError { Text(preferenceError).foregroundStyle(.red).font(.callout) }
+                if let preferenceError {
+                    Text(preferenceError)
+                        .foregroundStyle(.red)
+                        .font(.callout)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
+                        .help(preferenceError)
+                }
             }
 
             Section("Status") {
@@ -41,7 +50,7 @@ struct UpdateSettingsView: View {
                     Button("Check Now") { Task { await coordinator.ampUpdateController.checkNow() } }
                         .disabled(coordinator.ampUpdateController.checkState == .checking)
                     Button("Install Now") { coordinator.installAvailableUpdate() }
-                        .disabled(coordinator.ampUpdateController.latestVersion == nil)
+                        .disabled(!coordinator.canInstallAvailableUpdate)
                     Spacer()
                     Button("Restart All When Idle") { coordinator.restartAllWhenIdle() }
                         .disabled(coordinator.restartRequiredRunnerCount == 0)

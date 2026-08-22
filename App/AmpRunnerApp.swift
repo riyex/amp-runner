@@ -227,9 +227,12 @@ struct SettingsRootView: View {
                 onCancel: { coordinator.cancelPendingStart() }
             )
         }
-        .task(id: coordinator.settingsPane) {
+        .onAppear {
             selectedPane = coordinator.settingsPane
+            coordinator.launchAtLogin.refresh()
         }
-        .onAppear { coordinator.launchAtLogin.refresh() }
+        .onChange(of: coordinator.settingsPane) { _, pane in
+            selectedPane = pane
+        }
     }
 }

@@ -146,6 +146,20 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
     }
 
     @MainActor
+    func testInstallAvailabilityRequiresOutdatedConfiguredProfileAndNoInstallInProgress() throws {
+        let fixture = try Fixture()
+        fixture.latest = AmpVersion("2.0.0")
+        fixture.load()
+        XCTAssertFalse(fixture.coordinator.canInstallAvailableUpdate)
+
+        fixture.installed[fixture.path] = AmpVersion("1.0.0")
+        XCTAssertTrue(fixture.coordinator.canInstallAvailableUpdate)
+
+        fixture.installStates[fixture.path] = .installing
+        XCTAssertFalse(fixture.coordinator.canInstallAvailableUpdate)
+    }
+
+    @MainActor
     func testExplicitQueuedRestartsWaitForIdleAndNeverRestartStoppedOrIneligibleProfiles() throws {
         let fixture = try Fixture(preferences: .init(restartsUpdatedRunnersWhenIdle: true))
         fixture.installed[fixture.path] = AmpVersion("2.0.0")

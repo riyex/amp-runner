@@ -42,3 +42,19 @@ Implemented the five-pane toolbar `TabView` in the required order: General, Runn
 ## Concerns
 
 - Did not launch/interact with the app to avoid touching real login/update/profile preferences; layout inspection was source-based plus both native builds.
+
+## Round 1 fixes
+
+- Replaced task-based pane synchronization with explicit initial and `settingsPane` change synchronization, so menu requests route an already-open window reliably.
+- General now directly observes the login-item and notification preference owners, preserves the approval warning, and bounds login-item failure text.
+- Indented automatic install/restart beneath automatic checks while leaving notifications independent and preserving disabled values.
+- Bounded update preference save failures and restricted Install Now to configured outdated profiles while no install is active.
+- Added a focused applicability regression test; it passed via the AmpRunner Xcode test scheme.
+
+## Round 1 verification
+
+- Focused `RunnerUpdateOrchestrationTests.testInstallAvailabilityRequiresOutdatedConfiguredProfileAndNoInstallInProgress` — passed (1 test, 0 failures).
+- `swift test` — 150 tests, 0 failures.
+- `xcodebuild ... -scheme AmpRunner ... CODE_SIGNING_ALLOWED=NO build` — succeeded.
+- `xcodebuild ... -scheme AmpRunner-AppStore ... CODE_SIGNING_ALLOWED=NO build` — succeeded.
+- Source self-review confirmed the five-pane toolbar order, independent notification preference, bounded/truncatable errors with full text help, explicit working-runner confirmation, and aggregate menu behavior remain intact.

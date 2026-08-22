@@ -1,16 +1,30 @@
 import SwiftUI
 
 struct GeneralSettingsView: View {
-    @ObservedObject var coordinator: RunnerCoordinator
+    @ObservedObject private var launchAtLogin: LaunchAtLoginManager
+    @ObservedObject private var notifier: RunnerNotifier
+
+    init(coordinator: RunnerCoordinator) {
+        launchAtLogin = coordinator.launchAtLogin
+        notifier = coordinator.notifier
+    }
 
     var body: some View {
         Form {
             Section("Startup") {
                 Toggle("Start Amp Runner at Login", isOn: launchAtLoginBinding)
-                if coordinator.launchAtLogin.requiresApproval {
+                if launchAtLogin.requiresApproval {
                     Label("Login item needs approval in System Settings › General › Login Items", systemImage: "exclamationmark.triangle")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                }
+                if let error = launchAtLogin.lastError {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
+                        .help(error)
                 }
             }
             Section("Notifications") {
@@ -20,14 +34,14 @@ struct GeneralSettingsView: View {
         .formStyle(.grouped)
         .padding()
         .frame(minWidth: 520, minHeight: 360)
-        .onAppear { coordinator.launchAtLogin.refresh() }
+        .onAppear { launchAtLogin.refresh() }
     }
 
     private var launchAtLoginBinding: Binding<Bool> {
-        Binding(get: { coordinator.launchAtLogin.isEnabled }, set: { _ = coordinator.launchAtLogin.setEnabled($0) })
+        Binding(get: { launchAtLogin.isEnabled }, set: { _ = launchAtLogin.setEnabled($0) })
     }
 
     private var notificationBinding: Binding<Bool> {
-        Binding(get: { coordinator.notifier.isEnabled }, set: { coordinator.notifier.isEnabled = $0 })
+        Binding(get: { notifier.isEnabled }, set: { notifier.isEnabled = $0 })
     }
 }

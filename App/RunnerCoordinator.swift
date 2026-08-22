@@ -454,6 +454,15 @@ final class RunnerCoordinator: ObservableObject {
         )
     }
 
+    var canInstallAvailableUpdate: Bool {
+        let sources = profiles.map(updateSource(for:))
+        guard !sources.contains(where: { $0.installState == .installing }) else { return false }
+        return sources.contains { source in
+            guard let installed = source.installedVersion, let latest = source.latestVersion else { return false }
+            return installed < latest
+        }
+    }
+
     func saveUpdatePreferences(_ preferences: AmpUpdatePreferences) throws {
         if let saveUpdatePreferencesOverride {
             try saveUpdatePreferencesOverride(preferences)
