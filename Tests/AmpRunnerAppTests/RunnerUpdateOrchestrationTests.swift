@@ -31,7 +31,7 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
     }
 
     @MainActor
-    func testAutomaticAndQueuedRestartsWaitForIdleAndNeverRestartStoppedOrIneligibleProfiles() throws {
+    func testExplicitQueuedRestartsWaitForIdleAndNeverRestartStoppedOrIneligibleProfiles() throws {
         let fixture = try Fixture(preferences: .init(restartsUpdatedRunnersWhenIdle: true))
         fixture.installed[fixture.path] = AmpVersion("2.0.0")
         fixture.snapshots[fixture.first.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
@@ -49,7 +49,43 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
     }
 
     @MainActor
-    func testCompletedInstallAutomaticallyQueuesOnlyRunningOutdatedProfiles() throws {
+    func testEnablingAutomaticIdleRestartsImmediatelyRestartsIdleAndWaitsForWorkingRunner() throws {
+        let fixture = try Fixture()
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.snapshots[fixture.second.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+
+        try fixture.coordinator.saveUpdatePreferences(.init(restartsUpdatedRunnersWhenIdle: true))
+        XCTAssertEqual(fixture.restarts, [fixture.first.id])
+        XCTAssertTrue(fixture.coordinator.queuedUpdateRestartProfileIDs.isEmpty, "automatic policy must not own one-shot queue entries")
+
+        fixture.snapshots[fixture.second.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.changes.send()
+        XCTAssertEqual(fixture.restarts, [fixture.first.id, fixture.second.id])
+    }
+
+    @MainActor
+    func testDisablingAutomaticIdleRestartsPreventsFutureAutomaticWorkButPreservesExplicitQueue() throws {
+        let fixture = try Fixture(preferences: .init(restartsUpdatedRunnersWhenIdle: true))
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+        fixture.coordinator.restartAllWhenIdle()
+
+        try fixture.coordinator.saveUpdatePreferences(.init(restartsUpdatedRunnersWhenIdle: false))
+        XCTAssertTrue(fixture.coordinator.queuedUpdateRestartProfileIDs.contains(fixture.first.id))
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.changes.send()
+        XCTAssertEqual(fixture.restarts, [fixture.first.id], "explicit one-shot request survives automatic policy changes")
+
+        fixture.snapshots[fixture.second.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.changes.send()
+        XCTAssertEqual(fixture.restarts, [fixture.first.id], "disabled automatic policy cannot schedule new work")
+    }
+
+    @MainActor
+    func testCompletedInstallAutomaticallyRestartsOnlyEligibleRunningOutdatedProfiles() throws {
         let fixture = try Fixture(preferences: .init(restartsUpdatedRunnersWhenIdle: true))
         fixture.installed[fixture.path] = AmpVersion("2.0.0")
         fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
@@ -107,6 +143,42 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         XCTAssertEqual(fixture.appliedPreferences.last, saved)
         XCTAssertNil(fixture.coordinator.loadError)
     }
+
+    @MainActor
+    func testSaveFailurePreservesAppliedPreferences() throws {
+        enum Failure: Error { case write }
+        let fixture = try Fixture(
+            preferences: .init(automaticallyChecksForUpdates: false),
+            savePreferences: { _ in throw Failure.write }
+        )
+        let original = fixture.coordinator.updatePreferences
+        let appliedCount = fixture.appliedPreferences.count
+
+        XCTAssertThrowsError(try fixture.coordinator.saveUpdatePreferences(.init(restartsUpdatedRunnersWhenIdle: true)))
+        XCTAssertEqual(fixture.coordinator.updatePreferences, original)
+        XCTAssertEqual(fixture.appliedPreferences.count, appliedCount)
+    }
+
+    @MainActor
+    func testControllerPostMutationPublicationReevaluatesAutomaticRestart() async throws {
+        var reportedVersion = AmpVersion("1.0.0")!
+        let controller = AmpUpdateController(executeCommand: { request in
+            XCTAssertEqual(request.arguments, ["version"])
+            return AmpCommandResult(exitCode: 0, stdout: Data("\(reportedVersion)\n".utf8), stderr: Data())
+        })
+        let fixture = try Fixture(preferences: .init(restartsUpdatedRunnersWhenIdle: true), controller: controller)
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.load()
+        _ = await controller.installedVersion(for: URL(fileURLWithPath: fixture.path), environment: [:])
+        reportedVersion = AmpVersion("2.0.0")!
+        controller.synchronizeExecutables([])
+        controller.synchronizeExecutables([.init(executableURL: URL(fileURLWithPath: fixture.path), environment: [:])])
+
+        _ = await controller.installedVersion(for: URL(fileURLWithPath: fixture.path), environment: [:])
+        XCTAssertEqual(controller.installedVersions[fixture.path], AmpVersion("2.0.0"))
+        for _ in 0..<10 where fixture.restarts.isEmpty { await Task.yield() }
+        XCTAssertEqual(fixture.restarts, [fixture.first.id], "reconciliation must observe the published value after mutation")
+    }
 }
 
 @MainActor
@@ -126,7 +198,12 @@ private final class Fixture {
     let changes = PassthroughSubject<Void, Never>()
     let installCompletions = PassthroughSubject<Void, Never>()
 
-    init(preferences: AmpUpdatePreferences? = nil, preferencesStore suppliedStore: AmpUpdatePreferencesStore? = nil) throws {
+    init(
+        preferences: AmpUpdatePreferences? = nil,
+        preferencesStore suppliedStore: AmpUpdatePreferencesStore? = nil,
+        controller: AmpUpdateController? = nil,
+        savePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil
+    ) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         path = root.appendingPathComponent("amp").path
@@ -151,6 +228,7 @@ private final class Fixture {
             store: profileStore,
             pathSettingsStore: RunnerPathSettingsStore(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)), key: "path"),
             inheritedEnvironment: [:],
+            ampUpdateController: controller,
             ampUpdatePreferencesStore: preferenceStore,
             updateStateSource: { [weak self] profile in
                 let snapshot = self?.snapshots[profile.id]
@@ -158,7 +236,7 @@ private final class Fixture {
                     status: snapshot?.status ?? .stopped,
                     hasActiveThread: snapshot?.active ?? false,
                     runningVersion: snapshot?.running,
-                    installedVersion: self?.installed[self?.path ?? ""],
+                    installedVersion: controller?.installedVersions[self?.path ?? ""] ?? self?.installed[self?.path ?? ""],
                     latestVersion: self?.latest,
                     installState: self?.installStates[self?.path ?? ""]
                 )
@@ -166,7 +244,8 @@ private final class Fixture {
             restartUpdatedRunner: { [weak self] id in self?.restarts.append(id) },
             supervisorChanges: changes.eraseToAnyPublisher(),
             installCompletions: installCompletions.eraseToAnyPublisher(),
-            applyUpdatePreferences: { [weak self] value in self?.appliedPreferences.append(value) }
+            applyUpdatePreferences: { [weak self] value in self?.appliedPreferences.append(value) },
+            saveUpdatePreferences: savePreferences
         )
     }
 

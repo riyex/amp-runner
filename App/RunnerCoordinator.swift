@@ -71,6 +71,7 @@ final class RunnerCoordinator: ObservableObject {
     private let injectedUpdateStateSource: ((RunnerProfile) -> RunnerUpdateStateSource)?
     private let restartUpdatedRunner: ((UUID) -> Void)?
     private let applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)?
+    private let saveUpdatePreferencesOverride: ((AmpUpdatePreferences) throws -> Void)?
 
     struct PendingStart: Identifiable {
         let id: UUID
@@ -92,7 +93,8 @@ final class RunnerCoordinator: ObservableObject {
         restartUpdatedRunner: ((UUID) -> Void)? = nil,
         supervisorChanges: AnyPublisher<Void, Never>? = nil,
         installCompletions: AnyPublisher<Void, Never>? = nil,
-        applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)? = nil
+        applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)? = nil,
+        saveUpdatePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil
     ) {
         // Defaults are constructed here, inside the (already @MainActor) initializer body,
         // rather than as parameter default-value expressions. `RunnerNotifier`,
@@ -117,6 +119,7 @@ final class RunnerCoordinator: ObservableObject {
         self.injectedUpdateStateSource = updateStateSource
         self.restartUpdatedRunner = restartUpdatedRunner
         self.applyUpdatePreferences = applyUpdatePreferences
+        self.saveUpdatePreferencesOverride = saveUpdatePreferences
         self.inheritedEnvironment = inheritedEnvironment
         do {
             self.pathSettings = try resolvedPathSettingsStore.load()
@@ -130,7 +133,13 @@ final class RunnerCoordinator: ObservableObject {
         self.ampUpdateController = ampUpdateController ?? AmpUpdateController()
         recomputeLoadError()
         updateControllerSubscription = self.ampUpdateController.objectWillChange
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+                Task { @MainActor [weak self] in
+                    await Task.yield()
+                    self?.reevaluateUpdateRestarts()
+                }
+            }
         (supervisorChanges ?? Empty().eraseToAnyPublisher())
             .sink { [weak self] in self?.reevaluateUpdateRestarts() }
             .store(in: &updateOrchestrationSubscriptions)
@@ -435,7 +444,11 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     func saveUpdatePreferences(_ preferences: AmpUpdatePreferences) throws {
-        try ampUpdatePreferencesStore.save(preferences)
+        if let saveUpdatePreferencesOverride {
+            try saveUpdatePreferencesOverride(preferences)
+        } else {
+            try ampUpdatePreferencesStore.save(preferences)
+        }
         updatePreferences = preferences
         updatePreferencesLoadError = nil
         recomputeLoadError()
@@ -483,8 +496,6 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     private func handleCompletedInstallBatch() {
-        guard updatePreferences.restartsUpdatedRunnersWhenIdle else { return }
-        queuedUpdateRestartProfileIDs.formUnion(eligibleUpdateRestartProfileIDs())
         reevaluateUpdateRestarts()
     }
 
@@ -492,7 +503,7 @@ final class RunnerCoordinator: ObservableObject {
         Set(profiles.compactMap { profile in
             let source = updateSource(for: profile)
             switch source.status {
-            case .online, .working where requiresRestart(source): return profile.id
+            case .online where requiresRestart(source), .working where requiresRestart(source): return profile.id
             default: return nil
             }
         })
@@ -524,6 +535,14 @@ final class RunnerCoordinator: ObservableObject {
         )
         queuedUpdateRestartProfileIDs = decision.keepQueued
         for id in decision.restartNow { beginUpdateRestart(id) }
+        guard updatePreferences.restartsUpdatedRunnersWhenIdle else { return }
+        for snapshot in snapshots where !snapshot.restartInFlight {
+            guard case .online = snapshot.status, !snapshot.hasActiveThread,
+                  let running = snapshot.runningVersion,
+                  let installed = snapshot.installedVersion,
+                  running < installed else { continue }
+            beginUpdateRestart(snapshot.profileID)
+        }
     }
 
     private func beginUpdateRestart(_ profileID: UUID) {

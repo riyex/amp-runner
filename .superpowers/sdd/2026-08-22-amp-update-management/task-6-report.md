@@ -38,3 +38,17 @@ Implemented the coordinator-owned profile/update join, preference persistence an
 
 - Hosted Xcode tests emit benign system-service/LaunchAgent diagnostics in the test host.
 - The process-monitor full-suite test demonstrated an existing timing flake once; the required clean rerun passed.
+
+## Fix Round 1
+
+- Separated automatic idle policy from the explicit one-shot queue. Automatic mode now reconciles all current snapshots on every controller/supervisor change without queue ownership; disabling it immediately prevents future automatic restarts while explicit requests remain queued.
+- Deferred controller `objectWillChange` reconciliation by one main-actor turn so orchestration reads post-mutation latest/installed/install state, while continuing to republish UI changes.
+- Enabling automatic idle restart now immediately restarts eligible online outdated runners and naturally catches working runners when they later become idle.
+- Preserved insert-before-restart and transient relaunch in-flight handling. Preference persistence still completes before applying state; a deterministic throwing save seam proves failures leave applied preferences unchanged.
+- Added regression coverage for enable/disable transitions, explicit queue ownership, controller-driven post-mutation Combine ordering, and failed preference saves.
+
+### Verification
+
+- RED: focused Xcode compilation failed on the missing preference-save failure seam before production changes.
+- GREEN: focused `RunnerUpdateOrchestrationTests` passed 11/11.
+- GREEN: full `swift test` passed 149/149 with zero failures.
