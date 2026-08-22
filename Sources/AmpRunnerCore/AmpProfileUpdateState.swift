@@ -15,6 +15,7 @@ public enum AmpProfileUpdateState: Equatable, Sendable {
         installationFailure: String?
     ) -> Self {
         if installationInProgress { return .installing(installed: installedVersion) }
+        guard !status.isRunning || runningVersion != nil else { return .versionUnknown }
         guard let installedVersion else { return .versionUnknown }
         if status.isRunning, let runningVersion, runningVersion < installedVersion {
             return .restartRequired(running: runningVersion, installed: installedVersion)

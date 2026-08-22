@@ -29,8 +29,10 @@ final class AmpProfileUpdateStateTests: XCTestCase {
 
     func testUnknownVersionsDoNotGuess() {
         XCTAssertEqual(derive(installed: nil), .versionUnknown)
-        XCTAssertEqual(derive(status: .online, running: nil), .updateAvailable(installed: installed, latest: latest))
-        XCTAssertEqual(derive(latest: nil), .upToDate(installed))
+        XCTAssertEqual(derive(status: .online, running: nil), .versionUnknown)
+        XCTAssertEqual(derive(status: .online, running: nil, failure: "failed"), .versionUnknown)
+        XCTAssertEqual(derive(status: .online, running: nil, latest: installed), .versionUnknown)
+        XCTAssertEqual(derive(status: .stopped, latest: nil), .upToDate(installed))
     }
 
     private func derive(
