@@ -4,6 +4,34 @@ import AmpRunnerCore
 
 final class AmpUpdateControllerTests: XCTestCase {
     @MainActor
+    func testScheduleUsesOneTaskThreeSecondThenHourlySleepsAndDisableCancelsIt() async {
+        let sleeper = SleepRecorder()
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("1.0.0".utf8) },
+            sleep: { try await sleeper.sleep($0) }
+        )
+
+        controller.setAutomaticChecksEnabled(true)
+        controller.setAutomaticChecksEnabled(true)
+        await sleeper.waitForCallCount(1)
+        let initialIntervals = await sleeper.intervals
+        XCTAssertEqual(initialIntervals, [3])
+
+        await sleeper.resumeNext()
+        await sleeper.waitForCallCount(2)
+        let recurringIntervals = await sleeper.intervals
+        XCTAssertEqual(recurringIntervals, [3, 3_600])
+
+        controller.setAutomaticChecksEnabled(false)
+        await sleeper.waitForCancellation()
+        let cancellationCount = await sleeper.cancellationCount
+        XCTAssertEqual(cancellationCount, 1)
+
+        await controller.checkNow()
+        XCTAssertEqual(controller.latestVersion, AmpVersion("1.0.0"))
+    }
+
+    @MainActor
     func testCheckUsesProductionRequestAndPreservesLatestAcrossBoundedFailure() async {
         var requests: [URLRequest] = []
         var responses = [Result<Data, Error>](
@@ -89,6 +117,48 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testStaleProbeCannotPublishAfterIdentityChanges() async {
+        var identity = AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: "old")
+        let commands = GatedCommands(results: ["1.0.0\n", "2.0.0\n"])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            executeCommand: { try await commands.execute($0) },
+            readIdentity: { _ in identity }
+        )
+        controller.synchronizeExecutables([AmpExecutableRegistration(executableURL: url)])
+
+        let oldProbe = Task { await controller.installedVersion(for: url) }
+        await commands.waitForRequestCount(1)
+        identity.fileIdentifier = "new"
+        let newProbe = Task { await controller.installedVersion(for: url) }
+        await commands.waitForRequestCount(2)
+        await commands.resume(at: 1)
+        let newVersion = await newProbe.value
+        XCTAssertEqual(newVersion, AmpVersion("2.0.0"))
+        await commands.resume(at: 0)
+        _ = await oldProbe.value
+
+        XCTAssertEqual(controller.installedVersions[url.path], AmpVersion("2.0.0"))
+        let requestCount = await commands.requestCount
+        XCTAssertEqual(requestCount, 2)
+    }
+
+    @MainActor
+    func testRemovedProbeCannotRepopulatePublishedState() async {
+        let commands = GatedCommands(results: ["1.0.0\n"])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(executeCommand: { try await commands.execute($0) })
+        controller.synchronizeExecutables([AmpExecutableRegistration(executableURL: url)])
+        let probe = Task { await controller.installedVersion(for: url) }
+        await commands.waitForRequestCount(1)
+        controller.synchronizeExecutables([])
+        await commands.resume(at: 0)
+        _ = await probe.value
+        XCTAssertNil(controller.installedVersions[url.path])
+        XCTAssertNil(controller.probeErrors[url.path])
+    }
+
+    @MainActor
     func testInstallProbesThenUpdatesOutdatedPathsSequentiallyWithoutPostProbe() async {
         let recorder = CommandRecorder(results: [
             AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
@@ -126,6 +196,91 @@ final class AmpUpdateControllerTests: XCTestCase {
         let requestCount = await recorder.requests.count
         XCTAssertEqual(requestCount, 2)
     }
+
+    @MainActor
+    func testConcurrentInstallCallsCoalesceAndReserveAutomaticAttemptBeforeProbeSuspends() async {
+        let commands = GatedCommands(results: ["1.0.0\n", "updated 2.0.0\n"])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await commands.execute($0) }
+        )
+        controller.synchronizeExecutables([AmpExecutableRegistration(executableURL: url)])
+        await controller.checkNow()
+
+        async let first: Void = controller.installOutdatedExecutables(automatic: true)
+        await commands.waitForRequestCount(1)
+        async let second: Void = controller.installOutdatedExecutables(automatic: true)
+        await Task.yield()
+        var requestCount = await commands.requestCount
+        XCTAssertEqual(requestCount, 1)
+        await commands.resume(at: 0)
+        await commands.waitForRequestCount(2)
+        await commands.resume(at: 1)
+        _ = await (first, second)
+        requestCount = await commands.requestCount
+        XCTAssertEqual(requestCount, 2)
+    }
+
+    @MainActor
+    func testManualRetryAlwaysFreshlyProbesAndPreservesVersionOnFailure() async {
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 1, stdout: Data(), stderr: Data("failed".utf8)),
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("no update needed\n".utf8), stderr: Data())
+        ])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) }
+        )
+        controller.synchronizeExecutables([AmpExecutableRegistration(executableURL: url)])
+        await controller.checkNow()
+        await controller.installOutdatedExecutables()
+        XCTAssertEqual(controller.installedVersions[url.path], AmpVersion("1.0.0"))
+        XCTAssertEqual(controller.installStates[url.path], .failed("failed"))
+
+        await controller.installOutdatedExecutables()
+        let arguments = await recorder.requests.map(\.arguments)
+        XCTAssertEqual(arguments, [
+            ["version"], ["update", "--porcelain"],
+            ["version"], ["update", "--porcelain"]
+        ])
+        XCTAssertEqual(controller.installedVersions[url.path], AmpVersion("1.0.0"))
+    }
+
+    @MainActor
+    func testDuplicateRegistrationsInstallDistinctPathsOnceInRegistrationOrder() async {
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("updated 2.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("1.5.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("updated 2.0.0\n".utf8), stderr: Data())
+        ])
+        let first = URL(fileURLWithPath: "/tmp/one/amp")
+        let duplicate = URL(fileURLWithPath: "/tmp/one/../one/amp")
+        let second = URL(fileURLWithPath: "/tmp/two/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) }
+        )
+        controller.synchronizeExecutables([
+            AmpExecutableRegistration(executableURL: first),
+            AmpExecutableRegistration(executableURL: duplicate),
+            AmpExecutableRegistration(executableURL: second)
+        ])
+        await controller.checkNow()
+        await controller.installOutdatedExecutables()
+
+        let requests = await recorder.requests
+        XCTAssertEqual(requests.map { $0.executableURL.path }, [first.path, first.path, second.path, second.path])
+        XCTAssertEqual(requests.map(\.arguments), [
+            ["version"], ["update", "--porcelain"],
+            ["version"], ["update", "--porcelain"]
+        ])
+        XCTAssertEqual(controller.lastCompletedInstallBatch?.results.map(\.path), [first.path, second.path])
+    }
 }
 
 private enum TestError: Error { case message(String) }
@@ -137,5 +292,63 @@ private actor CommandRecorder {
     func execute(_ request: AmpCommandRequest) throws -> AmpCommandResult {
         requests.append(request)
         return results.removeFirst()
+    }
+}
+
+private actor GatedCommands {
+    private var requests: [AmpCommandRequest] = []
+    private let results: [String]
+    private var continuations: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    init(results: [String]) { self.results = results }
+    var requestCount: Int { requests.count }
+
+    func execute(_ request: AmpCommandRequest) async throws -> AmpCommandResult {
+        let index = requests.count
+        requests.append(request)
+        await withCheckedContinuation { continuations[index] = $0 }
+        return AmpCommandResult(exitCode: 0, stdout: Data(results[index].utf8), stderr: Data())
+    }
+
+    func waitForRequestCount(_ count: Int) async {
+        while requests.count < count { await Task.yield() }
+    }
+
+    func resume(at index: Int) { continuations.removeValue(forKey: index)?.resume() }
+}
+
+private actor SleepRecorder {
+    private(set) var intervals: [TimeInterval] = []
+    private(set) var cancellationCount = 0
+    private var continuations: [CheckedContinuation<Void, Error>] = []
+
+    func sleep(_ interval: TimeInterval) async throws {
+        intervals.append(interval)
+        do {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuations.append($0) }
+            } onCancel: {
+                Task { await self.cancelPending() }
+            }
+        } catch {
+            throw error
+        }
+    }
+
+    func waitForCallCount(_ count: Int) async {
+        while intervals.count < count { await Task.yield() }
+    }
+
+    func resumeNext() { continuations.removeFirst().resume() }
+
+    func waitForCancellation() async {
+        while cancellationCount == 0 { await Task.yield() }
+    }
+
+    private func cancelPending() {
+        cancellationCount += 1
+        let pending = continuations
+        continuations.removeAll()
+        pending.forEach { $0.resume(throwing: CancellationError()) }
     }
 }

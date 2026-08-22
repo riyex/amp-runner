@@ -59,10 +59,11 @@ final class AmpUpdateController: ObservableObject {
     private let readIdentity: IdentityReader
     private var automaticInstallEnabled = false
     private var scheduleTask: Task<Void, Never>?
-    private var probeTasks: [String: Task<AmpVersion?, Never>] = [:]
+    private var probeTasks: [String: ProbeFlight] = [:]
     private var probedIdentities: [String: AmpExecutableIdentity] = [:]
     private var probedRelease: [String: AmpVersion?] = [:]
     private var automaticAttempts: [String: AutomaticAttempt] = [:]
+    private var installBatchTask: Task<Void, Never>?
 
     init(
         fetchRelease: ReleaseFetcher? = nil,
@@ -94,6 +95,10 @@ final class AmpUpdateController: ObservableObject {
         installStates = installStates.filter { paths.contains($0.key) }
         installedVersions = installedVersions.filter { paths.contains($0.key) }
         probeErrors = probeErrors.filter { paths.contains($0.key) }
+        for (path, flight) in probeTasks where !paths.contains(path) {
+            flight.task.cancel()
+            probeTasks[path] = nil
+        }
     }
 
     func setAutomaticChecksEnabled(_ enabled: Bool) {
@@ -140,17 +145,25 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func installedVersion(for executableURL: URL) async -> AmpVersion? {
+        await probeVersion(for: executableURL, force: false)
+    }
+
+    private func probeVersion(for executableURL: URL, force: Bool) async -> AmpVersion? {
         let url = executableURL.standardizedFileURL
         let path = url.path
-        if let task = probeTasks[path] { return await task.value }
         let identity = readIdentity(url)
-        if let version = installedVersions[path],
+        let release = latestVersion
+        if let flight = probeTasks[path], flight.identity == identity, flight.release == release {
+            return await flight.task.value
+        }
+        if !force, let version = installedVersions[path],
            probedIdentities[path] == identity,
-           probedRelease[path] == latestVersion {
+           probedRelease[path] == release {
             return version
         }
 
         let executor = executeCommand
+        let token = UUID()
         let task = Task<AmpVersion?, Never> {
             do {
                 let request = AmpCommandRequest(
@@ -172,11 +185,15 @@ final class AmpUpdateController: ObservableObject {
                 return nil
             }
         }
-        probeTasks[path] = task
+        probeTasks[path] = ProbeFlight(token: token, identity: identity, release: release, task: task)
         let version = await task.value
+        guard probeTasks[path]?.token == token,
+              registeredExecutableURLs.contains(where: { $0.path == path }) else {
+            return version
+        }
         probeTasks[path] = nil
         probedIdentities[path] = identity
-        probedRelease[path] = latestVersion
+        probedRelease[path] = release
         if let version {
             installedVersions[path] = version
             probeErrors[path] = nil
@@ -188,18 +205,35 @@ final class AmpUpdateController: ObservableObject {
 
     func installOutdatedExecutables(automatic: Bool = false) async {
         guard let latestVersion else { return }
+        if let installBatchTask {
+            return await installBatchTask.value
+        }
+
+        let urls: [URL]
+        if automatic {
+            urls = registeredExecutableURLs.filter { url in
+                let attempt = AutomaticAttempt(version: latestVersion, identity: readIdentity(url))
+                guard automaticAttempts[url.path] != attempt else { return false }
+                automaticAttempts[url.path] = attempt
+                return true
+            }
+        } else {
+            urls = registeredExecutableURLs
+        }
+        let task = Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            await self.performInstallBatch(urls: urls, latestVersion: latestVersion)
+        }
+        installBatchTask = task
+        await task.value
+        if installBatchTask != nil { installBatchTask = nil }
+    }
+
+    private func performInstallBatch(urls: [URL], latestVersion: AmpVersion) async {
         var results: [AmpInstallBatch.Result] = []
-        for url in registeredExecutableURLs {
+        for url in urls {
             let path = url.path
-            let identity = readIdentity(url)
-            if automatic,
-               automaticAttempts[path] == AutomaticAttempt(version: latestVersion, identity: identity) {
-                continue
-            }
-            guard let installed = await installedVersion(for: url), installed < latestVersion else { continue }
-            if automatic {
-                automaticAttempts[path] = AutomaticAttempt(version: latestVersion, identity: identity)
-            }
+            guard let installed = await probeVersion(for: url, force: true), installed < latestVersion else { continue }
             installStates[path] = .installing
             let finalState: AmpExecutableInstallState
             do {
@@ -235,8 +269,10 @@ final class AmpUpdateController: ObservableObject {
 
     func cancel() {
         setAutomaticChecksEnabled(false)
-        for task in probeTasks.values { task.cancel() }
+        for flight in probeTasks.values { flight.task.cancel() }
         probeTasks.removeAll()
+        installBatchTask?.cancel()
+        installBatchTask = nil
     }
 
     private func bounded(_ message: String) -> String { String(message.prefix(512)) }
@@ -254,6 +290,13 @@ final class AmpUpdateController: ObservableObject {
             fileIdentifier: inode
         )
     }
+}
+
+private struct ProbeFlight {
+    let token: UUID
+    let identity: AmpExecutableIdentity
+    let release: AmpVersion?
+    let task: Task<AmpVersion?, Never>
 }
 
 private struct AutomaticAttempt: Equatable {
