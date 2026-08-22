@@ -381,6 +381,10 @@ final class RunnerCoordinatorUpdateRegistrationTests: XCTestCase {
 
         try coordinator.savePathDirectories([root.path])
         XCTAssertEqual(controller.registeredExecutableURLs.map(\.path), [profile.ampExecutablePath])
+        XCTAssertEqual(
+            controller.registeredEnvironment(for: URL(fileURLWithPath: profile.ampExecutablePath))?["PATH"]?.split(separator: ":").first,
+            Substring(root.path)
+        )
 
         try coordinator.delete(profile)
         XCTAssertTrue(controller.registeredExecutableURLs.isEmpty)

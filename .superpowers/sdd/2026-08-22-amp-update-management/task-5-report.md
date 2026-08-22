@@ -101,3 +101,39 @@ Passed 149 tests with 0 failures. `git diff --check` also passed.
 ### Remaining concern
 
 - Hosted Xcode tests continue to emit pre-existing macOS service/bookmark diagnostics; all selected tests pass. The Low fixture-cleanup item remains deferred as requested.
+
+## Fix Round 2
+
+### Outcome
+
+- The post-probe launch-failure test now blocks inside the provider, verifies `.starting` with no published version, then completes the provider before allowing the missing-monitor spawn rejection. This deterministically proves provider entry/completion precedes launch failure and the probed version is never published.
+- Executable registrations now retain the coordinator's current runner environment. PATH-save coverage verifies the refreshed registration starts with the newly saved directory; automatic probes and updates consume that same registered environment.
+- A new lifecycle test performs intentional replacements before switching the fixture to abnormal exits. It observes the replacement plus the full two-retry abnormal budget (five provider calls total), proving intentional restart does not consume an abnormal retry attempt.
+
+### RED evidence
+
+- The initial pre-seam focused invocation was blocked before Swift compilation by the project's duplicate `AmpRunner.app` product-output error, so it did not provide a valid test RED. Code inspection confirmed registrations carried only the unchanged URL, and the new PATH assertion required the narrow `registeredEnvironment(for:)` controller surface.
+- After introducing environment-backed registrations, the focused hosted test crashed on duplicate executable registrations. This exposed a real deduplication gap in the initial implementation; synchronization was corrected to preserve the first environment for each standardized executable path.
+- A reused DerivedData directory intermittently produced the project's known duplicate-product build error. A fresh DerivedData directory gave the authoritative focused result below.
+
+### GREEN evidence
+
+```sh
+xcodebuild test -project AmpRunner.xcodeproj -scheme AmpRunner \
+  -derivedDataPath /tmp/amp-runner-task5-r2-green \
+  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO \
+  -only-testing:AmpRunnerTests/ProcessSupervisorVersionTests \
+  -only-testing:AmpRunnerTests/RunnerCoordinatorUpdateRegistrationTests
+```
+
+`TEST SUCCEEDED`: 10 tests, 0 failures (9 supervisor tests and 1 coordinator registration test).
+
+```sh
+swift test
+```
+
+Passed 149 tests with 0 failures. `git diff --check` also passed.
+
+### Remaining concern
+
+- Hosted Xcode tests still emit the pre-existing macOS service/bookmark diagnostics. Reusing DerivedData can also trigger duplicate `AmpRunner.app` product output; a clean/fresh DerivedData path succeeds. The deferred Low fixture cleanup was not revisited.

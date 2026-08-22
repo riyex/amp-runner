@@ -5,6 +5,15 @@ import AmpRunnerCore
 
 struct AmpExecutableRegistration: Equatable, Sendable {
     let executableURL: URL
+    let environment: [String: String]
+
+    init(
+        executableURL: URL,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        self.executableURL = executableURL
+        self.environment = environment
+    }
 }
 
 struct AmpExecutableIdentity: Equatable, Sendable {
@@ -64,6 +73,7 @@ final class AmpUpdateController: ObservableObject {
     private var probedRelease: [String: AmpVersion?] = [:]
     private var automaticAttempts: [String: AutomaticAttempt] = [:]
     private var installBatchTask: Task<Void, Never>?
+    private var registeredEnvironments: [String: [String: String]] = [:]
 
     init(
         fetchRelease: ReleaseFetcher? = nil,
@@ -92,6 +102,13 @@ final class AmpUpdateController: ObservableObject {
             return seen.insert(url.path).inserted ? url : nil
         }
         let paths = Set(registeredExecutableURLs.map(\.path))
+        registeredEnvironments.removeAll(keepingCapacity: true)
+        for registration in registrations {
+            let path = registration.executableURL.standardizedFileURL.path
+            if paths.contains(path), registeredEnvironments[path] == nil {
+                registeredEnvironments[path] = registration.environment
+            }
+        }
         installStates = installStates.filter { paths.contains($0.key) }
         installedVersions = installedVersions.filter { paths.contains($0.key) }
         probeErrors = probeErrors.filter { paths.contains($0.key) }
@@ -99,6 +116,10 @@ final class AmpUpdateController: ObservableObject {
             flight.task.cancel()
             probeTasks[path] = nil
         }
+    }
+
+    func registeredEnvironment(for executableURL: URL) -> [String: String]? {
+        registeredEnvironments[executableURL.standardizedFileURL.path]
     }
 
     func setAutomaticChecksEnabled(_ enabled: Bool) {
@@ -240,14 +261,15 @@ final class AmpUpdateController: ObservableObject {
         var results: [AmpInstallBatch.Result] = []
         for url in urls {
             let path = url.path
-            guard let installed = await probeVersion(for: url, force: true), installed < latestVersion else { continue }
+            let environment = registeredEnvironments[path] ?? ProcessInfo.processInfo.environment
+            guard let installed = await probeVersion(for: url, environment: environment, force: true), installed < latestVersion else { continue }
             installStates[path] = .installing
             let finalState: AmpExecutableInstallState
             do {
                 let request = AmpCommandRequest(
                     executableURL: url,
                     arguments: ["update", "--porcelain"],
-                    environment: ProcessInfo.processInfo.environment,
+                    environment: environment,
                     timeout: 300,
                     outputLimit: 64 * 1_024
                 )

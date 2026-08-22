@@ -336,12 +336,16 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     private func synchronizeAmpExecutables() {
+        let environment = runnerEnvironment()
         let registrations = profiles.compactMap { profile -> AmpExecutableRegistration? in
             guard let command = try? RunnerCommandBuilder.resolve(
                 profile: profile,
                 homeDirectoryPath: homeDirectoryPath
             ) else { return nil }
-            return AmpExecutableRegistration(executableURL: command.executableURL)
+            return AmpExecutableRegistration(
+                executableURL: command.executableURL,
+                environment: environment
+            )
         }
         ampUpdateController.synchronizeExecutables(registrations)
     }

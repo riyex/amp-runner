@@ -121,6 +121,36 @@ final class ProcessSupervisorVersionTests: XCTestCase {
     }
 
     @MainActor
+    func testIntentionalRestartDoesNotConsumeAbnormalRetryBudget() async throws {
+        let fixture = try SupervisorFixture()
+        let counter = ProbeCounter()
+        let supervisor = ProcessSupervisor(
+            profile: fixture.profile,
+            homeDirectoryPath: fixture.root.path,
+            versionProvider: { _, _ in await counter.record() },
+            monitorExecutableURL: fixture.monitorURL,
+            restartPolicy: RunnerRestartPolicy(delays: [0, 0])
+        )
+
+        supervisor.start()
+        try await waitUntil { supervisor.isRunning }
+        supervisor.restart()
+        await counter.waitForCallCount(2)
+        try await waitUntil(timeout: .seconds(4)) { supervisor.isRunning }
+
+        try "#!/bin/sh\nexit 7\n".write(to: fixture.ampURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fixture.ampURL.path)
+        supervisor.restart()
+        try await waitUntil(timeout: .seconds(4)) {
+            supervisor.status.errorMessage?.contains("restart limit reached after 2 attempts") == true
+        }
+
+        let callCount = await counter.callCount
+        XCTAssertEqual(callCount, 5)
+        XCTAssertNil(supervisor.runningAmpVersion)
+    }
+
+    @MainActor
     func testStaleTerminationCannotClearReplacementLaunch() async throws {
         let fixture = try SupervisorFixture(ampScript: "#!/bin/sh\nexit 0\n")
         let callbacks = TerminationCallbackQueue()
@@ -169,16 +199,24 @@ final class ProcessSupervisorVersionTests: XCTestCase {
     func testPostProbeLaunchFailureNeverPublishesVersion() async throws {
         let fixture = try SupervisorFixture()
         try FileManager.default.removeItem(at: fixture.monitorURL)
+        let gate = ProbeGate()
         let supervisor = ProcessSupervisor(
             profile: fixture.profile,
             homeDirectoryPath: fixture.root.path,
-            versionProvider: { _, _ in AmpVersion("8.0.0") },
+            versionProvider: { _, _ in await gate.wait() },
             monitorExecutableURL: fixture.monitorURL
         )
 
         supervisor.start()
+        await gate.waitUntilEntered()
+        XCTAssertEqual(supervisor.status, .starting)
+        XCTAssertNil(supervisor.runningAmpVersion)
+
+        await gate.resume(with: AmpVersion("8.0.0"))
         try await waitUntil { supervisor.status.errorMessage?.contains("Monitor helper is missing") == true }
 
+        let probeCallCount = await gate.callCount
+        XCTAssertEqual(probeCallCount, 1)
         XCTAssertNil(supervisor.runningAmpVersion)
         XCTAssertFalse(supervisor.isRunning)
     }
