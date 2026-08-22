@@ -33,6 +33,57 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testHourlyCheckReprobesWhenExecutableIdentityChangesWithoutNewRelease() async {
+        var identity = AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: "old")
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("2.0.0\n".utf8), stderr: Data())
+        ])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) },
+            readIdentity: { _ in identity }
+        )
+
+        await controller.checkNow()
+        controller.synchronizeExecutables([.init(executableURL: url)])
+        _ = await controller.installedVersion(for: url)
+        identity.fileIdentifier = "new"
+
+        await controller.checkNow()
+        await waitUntil { controller.installedVersions[url.path] == AmpVersion("2.0.0") }
+
+        let arguments = await recorder.requests.map(\.arguments)
+        XCTAssertEqual(arguments, [["version"], ["version"]])
+    }
+
+    @MainActor
+    func testNewReleaseReprobesEvenWhenExecutableIdentityIsUnchanged() async {
+        var releases = [Data("2.0.0".utf8), Data("3.0.0".utf8)]
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data())
+        ])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in releases.removeFirst() },
+            executeCommand: { try await recorder.execute($0) },
+            readIdentity: { _ in AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: "same") }
+        )
+
+        await controller.checkNow()
+        controller.synchronizeExecutables([.init(executableURL: url)])
+        _ = await controller.installedVersion(for: url)
+
+        await controller.checkNow()
+        for _ in 0..<100 where await recorder.requests.count < 2 { await Task.yield() }
+
+        let arguments = await recorder.requests.map(\.arguments)
+        XCTAssertEqual(arguments, [["version"], ["version"]])
+    }
+
+    @MainActor
     func testConcurrentChecksCoalesceAndCancellationInvalidatesUncooperativeCompletion() async {
         let fetches = GatedFetches(values: ["2.0.0", "3.0.0"])
         let controller = AmpUpdateController(fetchRelease: { try await fetches.fetch($0) })
@@ -384,6 +435,34 @@ final class AmpUpdateControllerTests: XCTestCase {
             ["version"], ["update", "--porcelain"]
         ])
         XCTAssertEqual(controller.installedVersions[url.path], AmpVersion("1.0.0"))
+    }
+
+    @MainActor
+    func testExternalUpdateClearsObsoleteInstallFailure() async {
+        var identity = AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: "old")
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 1, stdout: Data(), stderr: Data("failed".utf8)),
+            AmpCommandResult(exitCode: 0, stdout: Data("2.0.0\n".utf8), stderr: Data())
+        ])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) },
+            readIdentity: { _ in identity }
+        )
+        controller.synchronizeExecutables([.init(executableURL: url)])
+        _ = await controller.installedVersion(for: url)
+        await controller.checkNow()
+        await controller.installOutdatedExecutables()
+        XCTAssertEqual(controller.installStates[url.path], .failed("failed"))
+
+        identity.fileIdentifier = "new"
+        _ = await controller.installedVersion(for: url)
+
+        XCTAssertEqual(controller.installedVersions[url.path], AmpVersion("2.0.0"))
+        XCTAssertNil(controller.installStates[url.path])
     }
 
     @MainActor

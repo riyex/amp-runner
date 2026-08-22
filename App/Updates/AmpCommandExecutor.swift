@@ -30,8 +30,17 @@ struct AmpCommandExecutor: Sendable {
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        let stdoutTask = drain(stdoutPipe.fileHandleForReading, retaining: request.outputLimit)
-        let stderrTask = drain(stderrPipe.fileHandleForReading, retaining: request.outputLimit)
+        let drainGroup = DispatchGroup()
+        let stdoutTask = drain(
+            stdoutPipe.fileHandleForReading,
+            retaining: request.outputLimit,
+            completionGroup: drainGroup
+        )
+        let stderrTask = drain(
+            stderrPipe.fileHandleForReading,
+            retaining: request.outputLimit,
+            completionGroup: drainGroup
+        )
 
         do {
             try process.run()
@@ -58,6 +67,10 @@ struct AmpCommandExecutor: Sendable {
             throw error
         }
 
+        if !(await drainsFinished(drainGroup, within: 0.1)) {
+            stdoutPipe.fileHandleForReading.closeFile()
+            stderrPipe.fileHandleForReading.closeFile()
+        }
         let stdout = await stdoutTask.value
         let stderr = await stderrTask.value
         try Task.checkCancellation()
@@ -68,8 +81,14 @@ struct AmpCommandExecutor: Sendable {
         )
     }
 
-    private func drain(_ handle: FileHandle, retaining limit: Int) -> Task<Data, Never> {
-        Task.detached {
+    private func drain(
+        _ handle: FileHandle,
+        retaining limit: Int,
+        completionGroup: DispatchGroup
+    ) -> Task<Data, Never> {
+        completionGroup.enter()
+        return Task.detached {
+            defer { completionGroup.leave() }
             var retained = Data()
             let limit = max(0, limit)
             while let chunk = try? handle.read(upToCount: 64 * 1_024), !chunk.isEmpty {
@@ -78,6 +97,16 @@ struct AmpCommandExecutor: Sendable {
                 }
             }
             return retained
+        }
+    }
+
+    private func drainsFinished(_ group: DispatchGroup, within timeout: TimeInterval) async -> Bool {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                continuation.resume(
+                    returning: group.wait(timeout: .now() + max(0, timeout)) == .success
+                )
+            }
         }
     }
 

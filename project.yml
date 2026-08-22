@@ -129,6 +129,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.riyex.amprunner.tests
+        GENERATE_INFOPLIST_FILE: "YES"
         SWIFT_VERSION: "5.0"
 
   # Same sources, sandboxed entitlements. Kept so the App Store option exists if Apple's

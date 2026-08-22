@@ -10,12 +10,11 @@ struct UpdateSettingsView: View {
         Form {
             Section("Automatic Updates") {
                 preferenceToggle("Automatically check for updates", keyPath: \.automaticallyChecksForUpdates)
-                Group {
-                    preferenceToggle("Automatically install updates", keyPath: \.automaticallyInstallsUpdates)
-                    preferenceToggle("Restart updated runners when idle", keyPath: \.restartsUpdatedRunnersWhenIdle)
-                }
-                .disabled(!coordinator.updatePreferences.automaticallyChecksForUpdates)
-                .padding(.leading, 20)
+                preferenceToggle("Automatically install updates", keyPath: \.automaticallyInstallsUpdates)
+                    .disabled(!coordinator.updatePreferences.automaticallyChecksForUpdates)
+                    .padding(.leading, 20)
+                preferenceToggle("Restart updated runners when idle", keyPath: \.restartsUpdatedRunnersWhenIdle)
+                    .padding(.leading, 20)
                 preferenceToggle("Notify when updates are available", keyPath: \.sendsUpdateNotifications)
                 if let preferenceError {
                     Text(preferenceError)

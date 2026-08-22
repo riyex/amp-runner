@@ -111,6 +111,22 @@ final class AmpCommandExecutorTests: XCTestCase {
         }
     }
 
+    func testSuccessfulProcessReturnsWhenDescendantKeepsOutputPipesOpen() async throws {
+        let executable = try makeFixture("""
+        #!/bin/sh
+        sleep 30 &
+        printf complete
+        exit 0
+        """)
+
+        let start = Date()
+        let result = try await execute(executable, timeout: 2)
+
+        XCTAssertLessThan(Date().timeIntervalSince(start), 2)
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(String(decoding: result.stdout, as: UTF8.self), "complete")
+    }
+
     func testRetainsBoundedOutputWhileDrainingBothStreams() async throws {
         let executable = try makeFixture("""
         #!/bin/sh

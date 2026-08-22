@@ -22,6 +22,7 @@ struct RunnerUpdateStateSource {
     let installedVersion: AmpVersion?
     let latestVersion: AmpVersion?
     let installState: AmpExecutableInstallState?
+    let restartLifecycle: SupervisorRestartLifecycle
 }
 
 /// Owns all profiles and their supervisors, and is the single object the UI observes.
@@ -596,8 +597,11 @@ final class RunnerCoordinator: ObservableObject {
                 updateRestartProfileIDsInFlight.remove(profile.id)
                 continue
             }
-            if let lifecycle = supervisors[profile.id]?.restartLifecycle,
-               lifecycle == .failed || lifecycle == .aborted {
+            if source.restartLifecycle == .failed || source.restartLifecycle == .aborted {
+                updateRestartProfileIDsInFlight.remove(profile.id)
+                continue
+            }
+            if source.restartLifecycle == .completed, source.runningVersion == nil {
                 updateRestartProfileIDsInFlight.remove(profile.id)
                 continue
             }
@@ -661,7 +665,8 @@ final class RunnerCoordinator: ObservableObject {
             runningVersion: supervisor?.runningAmpVersion,
             installedVersion: ampUpdateController.installedVersions[path],
             latestVersion: ampUpdateController.latestVersion,
-            installState: ampUpdateController.installStates[path]
+            installState: ampUpdateController.installStates[path],
+            restartLifecycle: supervisor?.restartLifecycle ?? .none
         )
     }
 

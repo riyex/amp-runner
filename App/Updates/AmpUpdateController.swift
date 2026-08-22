@@ -216,11 +216,10 @@ final class AmpUpdateController: ObservableObject {
         checkState = .idle
         switch result {
         case let .success(version):
-            let newlyObservedRelease = latestVersion.map { version > $0 } ?? true
             latestVersion = version
             lastCheckedAt = now()
             checkError = nil
-            if newlyObservedRelease { triggerNeededProbes() }
+            triggerNeededProbes()
             if automaticInstallEnabled {
                 await installOutdatedExecutables(automatic: true)
             }
@@ -236,6 +235,7 @@ final class AmpUpdateController: ObservableObject {
             let path = url.path
             let identity = readIdentity(url)
             guard installedVersions[path] == nil || probedIdentities[path] != identity ||
+                    probedRelease[path] != latestVersion ||
                     probedEnvironments[path] != environment else { continue }
             needed.append((url, environment))
         }
@@ -325,6 +325,11 @@ final class AmpUpdateController: ObservableObject {
         if let version {
             installedVersions[path] = version
             probeErrors[path] = nil
+            if case .failed = installStates[path],
+               let latestVersion,
+               version >= latestVersion {
+                installStates[path] = nil
+            }
         } else {
             probeErrors[path] = "Could not determine the installed Amp version."
         }

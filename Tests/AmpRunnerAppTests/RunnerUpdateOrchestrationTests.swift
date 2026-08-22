@@ -313,6 +313,26 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedUpdateRestartClearsInFlightWhenVersionProbeFailed() throws {
+        let fixture = try Fixture()
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.load()
+        fixture.coordinator.restartToUpdate(fixture.first)
+        XCTAssertTrue(fixture.coordinator.updateRestartProfileIDsInFlight.contains(fixture.first.id))
+
+        fixture.snapshots[fixture.first.id] = .init(
+            status: .online,
+            active: false,
+            running: nil,
+            restartLifecycle: .completed
+        )
+        fixture.changes.send()
+
+        XCTAssertFalse(fixture.coordinator.updateRestartProfileIDsInFlight.contains(fixture.first.id))
+    }
+
+    @MainActor
     func testPreferencesLoadSaveApplyAndMalformedLoadIsNonfatal() throws {
         let suite = "RunnerUpdateOrchestrationTests-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -436,7 +456,12 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
 
 @MainActor
 private final class Fixture {
-    struct Snapshot { var status: RunnerStatus; var active: Bool; var running: AmpVersion? }
+    struct Snapshot {
+        var status: RunnerStatus
+        var active: Bool
+        var running: AmpVersion?
+        var restartLifecycle: SupervisorRestartLifecycle = .none
+    }
     let root: URL
     let path: String
     let secondPath: String
@@ -511,7 +536,8 @@ private final class Fixture {
                     runningVersion: snapshot?.running,
                     installedVersion: controller?.installedVersions[URL(fileURLWithPath: profile.ampExecutablePath).standardizedFileURL.path] ?? self?.installed[profile.ampExecutablePath],
                     latestVersion: controller?.latestVersion ?? self?.latest,
-                    installState: controller?.installStates[URL(fileURLWithPath: profile.ampExecutablePath).standardizedFileURL.path] ?? self?.installStates[self?.path ?? ""]
+                    installState: controller?.installStates[URL(fileURLWithPath: profile.ampExecutablePath).standardizedFileURL.path] ?? self?.installStates[self?.path ?? ""],
+                    restartLifecycle: snapshot?.restartLifecycle ?? .none
                 )
             },
             restartUpdatedRunner: { [weak self] id in self?.restarts.append(id) },
