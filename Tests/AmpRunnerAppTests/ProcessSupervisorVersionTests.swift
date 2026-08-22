@@ -124,17 +124,24 @@ final class ProcessSupervisorVersionTests: XCTestCase {
     func testIntentionalRestartDoesNotConsumeAbnormalRetryBudget() async throws {
         let fixture = try SupervisorFixture()
         let counter = ProbeCounter()
+        let callbacks = TerminationCallbackQueue()
         let supervisor = ProcessSupervisor(
             profile: fixture.profile,
             homeDirectoryPath: fixture.root.path,
             versionProvider: { _, _ in await counter.record() },
             monitorExecutableURL: fixture.monitorURL,
+            terminationCallbackScheduler: { callback in callbacks.appendFirstOtherwiseRun(callback) },
             restartPolicy: RunnerRestartPolicy(delays: [0, 0])
         )
 
         supervisor.start()
         try await waitUntil { supervisor.isRunning }
         supervisor.restart()
+        try await waitUntil { callbacks.count == 1 }
+        try await Task.sleep(for: .milliseconds(300))
+        let callCountBeforeTerminationHandling = await counter.callCount
+        XCTAssertEqual(callCountBeforeTerminationHandling, 1)
+        callbacks.runFirst()
         await counter.waitForCallCount(2)
         try await waitUntil(timeout: .seconds(4)) { supervisor.isRunning }
 
@@ -148,6 +155,34 @@ final class ProcessSupervisorVersionTests: XCTestCase {
         let callCount = await counter.callCount
         XCTAssertEqual(callCount, 5)
         XCTAssertNil(supervisor.runningAmpVersion)
+    }
+
+    @MainActor
+    func testRestartDeadlineRelaunchesAfterDelayedTerminationHandlingCompletes() async throws {
+        let fixture = try SupervisorFixture()
+        let callbacks = TerminationCallbackQueue()
+        let supervisor = ProcessSupervisor(
+            profile: fixture.profile,
+            homeDirectoryPath: fixture.root.path,
+            versionProvider: { _, _ in AmpVersion("1.0.0") },
+            monitorExecutableURL: fixture.monitorURL,
+            terminationCallbackScheduler: { callback in callbacks.appendFirstOtherwiseRun(callback) },
+            restartWaitTimeout: 0.1
+        )
+
+        supervisor.start()
+        try await waitUntil { supervisor.isRunning }
+        supervisor.restart()
+        try await waitUntil { callbacks.count == 1 }
+        try await waitUntil { supervisor.restartLifecycle == .failed }
+
+        XCTAssertFalse(supervisor.isRunning)
+        XCTAssertTrue(supervisor.logLines.contains { $0.contains("restart timed out") })
+        callbacks.runFirst()
+        try await waitUntil { supervisor.isRunning }
+        XCTAssertEqual(supervisor.restartLifecycle, .completed)
+        supervisor.stop()
+        try await waitUntil { supervisor.status == .stopped }
     }
 
     @MainActor
@@ -274,9 +309,18 @@ private actor ProbeCounter {
 @MainActor
 private final class TerminationCallbackQueue {
     private var callbacks: [@MainActor () -> Void] = []
+    private var hasQueuedFirstCallback = false
     var count: Int { callbacks.count }
 
     func append(_ callback: @escaping @MainActor () -> Void) { callbacks.append(callback) }
+    func appendFirstOtherwiseRun(_ callback: @escaping @MainActor () -> Void) {
+        if hasQueuedFirstCallback {
+            callback()
+        } else {
+            hasQueuedFirstCallback = true
+            callbacks.append(callback)
+        }
+    }
     func runFirst() { callbacks.removeFirst()() }
 }
 

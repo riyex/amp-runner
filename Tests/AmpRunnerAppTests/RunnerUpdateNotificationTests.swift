@@ -58,6 +58,26 @@ final class RunnerUpdateNotificationTests: XCTestCase {
     }
 
     @MainActor
+    func testUnchangedNotificationLedgerIsNotPersistedAgain() throws {
+        let suite = "RunnerUpdateNotificationTests-\(UUID())"
+        let defaults = try XCTUnwrap(TrackingUserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let notifier = RunnerNotifier(defaults: defaults, deliverUpdate: { _ in true })
+        let input = AmpUpdateNotificationInput(
+            latestVersion: AmpVersion("2.0.0"), outdatedExecutableCount: 1,
+            affectedRunnerCount: 1, restartRequiredRunnerCount: 0,
+            idleRunnerCount: 0, workingRunnerCount: 0,
+            automaticallyRestartsWhenIdle: false
+        )
+
+        notifier.notifyUpdates(input: input, enabled: true)
+        defaults.writtenKeys.removeAll()
+        notifier.notifyUpdates(input: input, enabled: true)
+
+        XCTAssertTrue(defaults.writtenKeys.isEmpty)
+    }
+
+    @MainActor
     func testPersistedRestartBatchIDIsSuppressedAfterNotifierRelaunch() throws {
         let suite = "RunnerUpdateNotificationTests-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -113,5 +133,14 @@ final class RunnerUpdateNotificationTests: XCTestCase {
         notifier.handleUpdateAction(.openUpdates)
         notifier.handleUpdateAction(.defaultOpen)
         XCTAssertEqual(actions, [.installUpdate, .restartAllWhenIdle, .openUpdates, .openUpdates])
+    }
+}
+
+private final class TrackingUserDefaults: UserDefaults {
+    var writtenKeys: [String] = []
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        writtenKeys.append(defaultName)
+        super.set(value, forKey: defaultName)
     }
 }

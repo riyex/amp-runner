@@ -1,6 +1,20 @@
 import SwiftUI
 import AmpRunnerCore
 
+struct AmpExecutableRowPresentation: Equatable {
+    let versionText: String
+    let errorText: String?
+
+    init(version: AmpVersion?, probeError: String?, installState: AmpExecutableInstallState?) {
+        versionText = version.map { "Amp \($0)" } ?? "Amp version unknown"
+        if case let .failed(message) = installState {
+            errorText = message
+        } else {
+            errorText = probeError
+        }
+    }
+}
+
 struct UpdateSettingsView: View {
     @ObservedObject var coordinator: RunnerCoordinator
     @State private var preferenceError: String?
@@ -11,7 +25,6 @@ struct UpdateSettingsView: View {
             Section("Automatic Updates") {
                 preferenceToggle("Automatically check for updates", keyPath: \.automaticallyChecksForUpdates)
                 preferenceToggle("Automatically install updates", keyPath: \.automaticallyInstallsUpdates)
-                    .disabled(!coordinator.updatePreferences.automaticallyChecksForUpdates)
                     .padding(.leading, 20)
                 preferenceToggle("Restart updated runners when idle", keyPath: \.restartsUpdatedRunnersWhenIdle)
                     .padding(.leading, 20)
@@ -83,12 +96,19 @@ struct UpdateSettingsView: View {
 
     private func executableRow(_ url: URL) -> some View {
         let path = url.standardizedFileURL.path
-        let version = coordinator.ampUpdateController.installedVersions[path]
-        let error = coordinator.ampUpdateController.probeErrors[path]
+        let presentation = AmpExecutableRowPresentation(
+            version: coordinator.ampUpdateController.installedVersions[path],
+            probeError: coordinator.ampUpdateController.probeErrors[path],
+            installState: coordinator.ampUpdateController.installStates[path]
+        )
         return VStack(alignment: .leading, spacing: 3) {
             Text(path).lineLimit(1).truncationMode(.middle).help(path)
-            Text(version.map { "Amp \($0)" } ?? error ?? "Amp version unknown")
-                .font(.caption).foregroundStyle(error == nil ? Color.secondary : Color.red).lineLimit(2)
+            Text(presentation.versionText)
+                .font(.caption).foregroundStyle(.secondary)
+            if let error = presentation.errorText {
+                Text(error)
+                    .font(.caption).foregroundStyle(.red).lineLimit(3).help(error)
+            }
         }
         .accessibilityElement(children: .combine)
     }

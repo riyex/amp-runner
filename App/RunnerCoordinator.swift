@@ -69,6 +69,7 @@ final class RunnerCoordinator: ObservableObject {
     private var subscriptions: [UUID: Set<AnyCancellable>] = [:]
     private var updateControllerSubscription: AnyCancellable?
     private var updateOrchestrationSubscriptions = Set<AnyCancellable>()
+    private var supervisorRestartReevaluationScheduled = false
     private let injectedUpdateStateSource: ((RunnerProfile) -> RunnerUpdateStateSource)?
     private let restartUpdatedRunner: ((UUID) -> Void)?
     private let applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)?
@@ -259,19 +260,37 @@ final class RunnerCoordinator: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Re-publish child changes so SwiftUI redraws the menu when a status flips.
+        // Re-publish every child change so SwiftUI redraws status, thread, and log updates.
         supervisor.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
-                Task { @MainActor [weak self] in
-                    await Task.yield()
-                    self?.reevaluateUpdateRestarts()
-                }
             }
             .store(in: &cancellables)
 
+        // Restart policy depends only on these properties. Each @Published publisher
+        // fires before mutation, so defer reconciliation until the new values are visible.
+        Publishers.MergeMany([
+            supervisor.$status.dropFirst().map { _ in }.eraseToAnyPublisher(),
+            supervisor.$activeThread.dropFirst().map { _ in }.eraseToAnyPublisher(),
+            supervisor.$runningAmpVersion.dropFirst().map { _ in }.eraseToAnyPublisher(),
+            supervisor.$restartLifecycle.dropFirst().map { _ in }.eraseToAnyPublisher()
+        ])
+        .sink { [weak self] in self?.scheduleSupervisorRestartReevaluation() }
+        .store(in: &cancellables)
+
         subscriptions[profileID] = cancellables
         return supervisor
+    }
+
+    private func scheduleSupervisorRestartReevaluation() {
+        guard !supervisorRestartReevaluationScheduled else { return }
+        supervisorRestartReevaluationScheduled = true
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+            self.supervisorRestartReevaluationScheduled = false
+            self.reevaluateUpdateRestarts()
+        }
     }
 
     private func name(of profileID: UUID) -> String {
@@ -598,7 +617,12 @@ final class RunnerCoordinator: ObservableObject {
                 continue
             }
             if source.restartLifecycle == .failed || source.restartLifecycle == .aborted {
-                updateRestartProfileIDsInFlight.remove(profile.id)
+                switch source.status {
+                case .stopped, .error:
+                    updateRestartProfileIDsInFlight.remove(profile.id)
+                case .starting, .online, .working:
+                    break
+                }
                 continue
             }
             if source.restartLifecycle == .completed, source.runningVersion == nil {
@@ -626,7 +650,9 @@ final class RunnerCoordinator: ObservableObject {
             enabled: true,
             queuedProfileIDs: queuedUpdateRestartProfileIDs
         )
-        queuedUpdateRestartProfileIDs = decision.keepQueued
+        if queuedUpdateRestartProfileIDs != decision.keepQueued {
+            queuedUpdateRestartProfileIDs = decision.keepQueued
+        }
         for id in decision.restartNow { beginUpdateRestart(id) }
         guard updatePreferences.restartsUpdatedRunnersWhenIdle else { return }
         for snapshot in snapshots where !snapshot.restartInFlight {

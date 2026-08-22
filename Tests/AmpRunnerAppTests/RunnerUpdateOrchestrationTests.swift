@@ -313,6 +313,27 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedRestartWhileRunnerIsStillOnlineDoesNotStartAnotherRestartCycle() throws {
+        let preferences = AmpUpdatePreferences(restartsUpdatedRunnersWhenIdle: true)
+        let fixture = try Fixture(preferences: preferences)
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(
+            status: .online,
+            active: false,
+            running: AmpVersion("1.0.0")
+        )
+        fixture.load()
+        fixture.coordinator.restartToUpdate(fixture.first)
+        XCTAssertEqual(fixture.restarts, [fixture.first.id])
+
+        fixture.snapshots[fixture.first.id]?.restartLifecycle = .failed
+        fixture.changes.send()
+
+        XCTAssertEqual(fixture.restarts, [fixture.first.id])
+        XCTAssertTrue(fixture.coordinator.updateRestartProfileIDsInFlight.contains(fixture.first.id))
+    }
+
+    @MainActor
     func testCompletedUpdateRestartClearsInFlightWhenVersionProbeFailed() throws {
         let fixture = try Fixture()
         fixture.installed[fixture.path] = AmpVersion("2.0.0")
@@ -385,6 +406,49 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         XCTAssertEqual(controller.installedVersions[fixture.path], AmpVersion("2.0.0"))
         for _ in 0..<10 where fixture.restarts.isEmpty { await Task.yield() }
         XCTAssertEqual(fixture.restarts, [fixture.first.id], "reconciliation must observe the published value after mutation")
+    }
+
+    @MainActor
+    func testSupervisorLogOnlyPublicationDoesNotReevaluateUpdateRestarts() async throws {
+        let fixture = try Fixture()
+        fixture.load()
+        let supervisor = try XCTUnwrap(fixture.coordinator.supervisors[fixture.first.id])
+        let baseline = fixture.updateStateSourceCallCount
+
+        supervisor.objectWillChange.send()
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(fixture.updateStateSourceCallCount, baseline)
+    }
+
+    @MainActor
+    func testSupervisorStatusPublicationReevaluatesUpdateRestarts() async throws {
+        let fixture = try Fixture()
+        fixture.load()
+        let supervisor = try XCTUnwrap(fixture.coordinator.supervisors[fixture.first.id])
+        let baseline = fixture.updateStateSourceCallCount
+
+        supervisor.start()
+        for _ in 0..<20 where fixture.updateStateSourceCallCount == baseline { await Task.yield() }
+
+        XCTAssertGreaterThan(fixture.updateStateSourceCallCount, baseline)
+        supervisor.stop()
+    }
+
+    @MainActor
+    func testUnchangedQueuedRestartSetIsNotRepublished() throws {
+        let fixture = try Fixture()
+        fixture.load()
+        var publications = 0
+        let subscription = fixture.coordinator.$queuedUpdateRestartProfileIDs
+            .dropFirst()
+            .sink { _ in publications += 1 }
+
+        fixture.changes.send()
+
+        XCTAssertEqual(publications, 0)
+        withExtendedLifetime(subscription) {}
     }
 
     @MainActor
@@ -475,6 +539,7 @@ private final class Fixture {
     var restarts: [UUID] = []
     var appliedPreferences: [AmpUpdatePreferences] = []
     var updateRequests: [RunnerUpdateNotificationRequest] = []
+    var updateStateSourceCallCount = 0
     let changes = PassthroughSubject<Void, Never>()
     let installCompletions = PassthroughSubject<AmpInstallBatch, Never>()
     private var ownedDefaultsSuites: [String] = []
@@ -529,6 +594,7 @@ private final class Fixture {
             ampUpdateController: controller,
             ampUpdatePreferencesStore: preferenceStore,
             updateStateSource: { [weak self] profile in
+                self?.updateStateSourceCallCount += 1
                 let snapshot = self?.snapshots[profile.id]
                 return RunnerUpdateStateSource(
                     status: snapshot?.status ?? .stopped,

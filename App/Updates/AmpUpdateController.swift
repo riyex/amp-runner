@@ -176,7 +176,7 @@ final class AmpUpdateController: ObservableObject {
                 do {
                     try await self.sleep(3)
                     while !Task.isCancelled {
-                        await self.checkNow()
+                        await self.checkNow(automatic: true)
                         try await self.sleep(3_600)
                     }
                 } catch { }
@@ -191,7 +191,7 @@ final class AmpUpdateController: ObservableObject {
         automaticInstallEnabled = enabled
     }
 
-    func checkNow() async {
+    func checkNow(automatic: Bool = false) async {
         if let checkTask {
             _ = await checkTask.value
             return
@@ -221,7 +221,7 @@ final class AmpUpdateController: ObservableObject {
             checkError = nil
             triggerNeededProbes()
             if automaticInstallEnabled {
-                await installOutdatedExecutables(automatic: true)
+                await installOutdatedExecutables(automatic: automatic)
             }
         case let .failure(error):
             checkError = bounded(error.localizedDescription)
@@ -350,25 +350,41 @@ final class AmpUpdateController: ObservableObject {
                 let attempt = AutomaticAttempt(
                     version: latestVersion,
                     identity: readIdentity(url),
-                    environment: environment
+                    environment: environment,
+                    count: 1,
+                    consumed: false
                 )
-                guard automaticAttempts[url.path] != attempt else { return false }
-                automaticAttempts[url.path] = attempt
+                if var previous = automaticAttempts[url.path], previous.matches(attempt) {
+                    guard !previous.consumed, previous.count < 3 else { return false }
+                    previous.count += 1
+                    automaticAttempts[url.path] = previous
+                } else {
+                    automaticAttempts[url.path] = attempt
+                }
                 return true
             }
         } else {
             urls = registeredExecutableURLs
         }
+        let reservedAutomaticAttempts = automatic ? automaticAttempts : [:]
         let task = Task<Void, Never> { [weak self] in
             guard let self else { return }
-            await self.performInstallBatch(urls: urls, latestVersion: latestVersion)
+            await self.performInstallBatch(
+                urls: urls,
+                latestVersion: latestVersion,
+                reservedAutomaticAttempts: reservedAutomaticAttempts
+            )
         }
         installBatchTask = task
         await task.value
         if operationGeneration == generation, installBatchTask != nil { installBatchTask = nil }
     }
 
-    private func performInstallBatch(urls: [URL], latestVersion: AmpVersion) async {
+    private func performInstallBatch(
+        urls: [URL],
+        latestVersion: AmpVersion,
+        reservedAutomaticAttempts: [String: AutomaticAttempt]
+    ) async {
         let generation = operationGeneration
         var results: [AmpInstallBatch.Result] = []
         var discardedStaleResult = false
@@ -377,10 +393,18 @@ final class AmpUpdateController: ObservableObject {
             let path = url.path
             let environment = registeredEnvironments[path] ?? ProcessInfo.processInfo.environment
             let registrationGeneration = registrationGenerations[path, default: 0]
-            guard let installed = await probeVersion(for: url, environment: environment, force: true), installed < latestVersion else { continue }
+            guard let installed = await probeVersion(for: url, environment: environment, force: true) else {
+                releaseAutomaticAttempt(path: path, reserved: reservedAutomaticAttempts[path])
+                continue
+            }
+            guard installed < latestVersion else {
+                consumeAutomaticAttempt(path: path, reserved: reservedAutomaticAttempts[path])
+                continue
+            }
             guard registrationGenerations[path] == registrationGeneration,
                   registeredEnvironments[path] == environment,
                   operationGeneration == generation else {
+                releaseAutomaticAttempt(path: path, reserved: reservedAutomaticAttempts[path])
                 discardedStaleResult = true
                 continue
             }
@@ -417,6 +441,7 @@ final class AmpUpdateController: ObservableObject {
                     finalState = .succeeded(installed)
                     outcome = .noUpdateNeeded
                 }
+                consumeAutomaticAttempt(path: path, reserved: reservedAutomaticAttempts[path])
             } catch {
                 finalState = .failed(bounded(error.localizedDescription))
                 outcome = .failed
@@ -433,6 +458,22 @@ final class AmpUpdateController: ObservableObject {
         guard operationGeneration == generation,
               !results.isEmpty || !discardedStaleResult else { return }
         lastCompletedInstallBatch = AmpInstallBatch(completedAt: now(), results: results)
+    }
+
+    private func consumeAutomaticAttempt(path: String, reserved: AutomaticAttempt?) {
+        guard let reserved, var current = automaticAttempts[path], current.matches(reserved) else { return }
+        current.consumed = true
+        automaticAttempts[path] = current
+    }
+
+    private func releaseAutomaticAttempt(path: String, reserved: AutomaticAttempt?) {
+        guard let reserved, var current = automaticAttempts[path], current.matches(reserved) else { return }
+        if current.count <= 1 {
+            automaticAttempts[path] = nil
+        } else {
+            current.count -= 1
+            automaticAttempts[path] = current
+        }
     }
 
     func cancel() {
@@ -475,10 +516,16 @@ private struct ProbeFlight {
     let task: Task<AmpVersion?, Never>
 }
 
-private struct AutomaticAttempt: Equatable {
+private struct AutomaticAttempt {
     let version: AmpVersion
     let identity: AmpExecutableIdentity
     let environment: [String: String]
+    var count: Int
+    var consumed: Bool
+
+    func matches(_ other: AutomaticAttempt) -> Bool {
+        version == other.version && identity == other.identity && environment == other.environment
+    }
 }
 
 private enum ControllerError: LocalizedError {

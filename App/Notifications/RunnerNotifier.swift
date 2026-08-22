@@ -118,13 +118,16 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
             lastRestartRequiredBatchIdentity: defaults.string(forKey: Self.lastRestartRequiredBatchIdentityKey)
         )
         let result = AmpUpdateNotificationPolicy.evaluate(input: input, notificationsEnabled: enabled, ledger: ledger)
-        if let version = result.ledger.lastUpdateAvailableVersion {
+        if result.ledger.lastUpdateAvailableVersion != ledger.lastUpdateAvailableVersion,
+           let version = result.ledger.lastUpdateAvailableVersion {
             defaults.set(version.description, forKey: Self.lastUpdateAvailableVersionKey)
         }
-        if let version = result.ledger.lastRestartRequiredVersion {
+        if result.ledger.lastRestartRequiredVersion != ledger.lastRestartRequiredVersion,
+           let version = result.ledger.lastRestartRequiredVersion {
             defaults.set(version.description, forKey: Self.lastRestartRequiredVersionKey)
         }
-        if let identity = result.ledger.lastRestartRequiredBatchIdentity {
+        if result.ledger.lastRestartRequiredBatchIdentity != ledger.lastRestartRequiredBatchIdentity,
+           let identity = result.ledger.lastRestartRequiredBatchIdentity {
             defaults.set(identity, forKey: Self.lastRestartRequiredBatchIdentityKey)
         }
         for event in result.events {

@@ -49,6 +49,7 @@ final class ProcessSupervisor: ObservableObject {
     private let versionProvider: AmpVersionProvider
     private let monitorExecutableURL: URL
     private let terminationCallbackScheduler: TerminationCallbackScheduler
+    private let restartWaitTimeout: TimeInterval
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -64,6 +65,7 @@ final class ProcessSupervisor: ObservableObject {
     private var metadataRequestID: UUID?
     private var restartPolicy: RunnerRestartPolicy
     private var isStoppingIntentionally = false
+    private var restartPendingAfterTermination = false
 
     init(
         profile: RunnerProfile,
@@ -75,7 +77,8 @@ final class ProcessSupervisor: ObservableObject {
         terminationCallbackScheduler: @escaping TerminationCallbackScheduler = { callback in
             Task { @MainActor in callback() }
         },
-        restartPolicy: RunnerRestartPolicy = RunnerRestartPolicy()
+        restartPolicy: RunnerRestartPolicy = RunnerRestartPolicy(),
+        restartWaitTimeout: TimeInterval = 12
     ) {
         self.profileID = profile.id
         self.profile = profile
@@ -86,6 +89,7 @@ final class ProcessSupervisor: ObservableObject {
         self.monitorExecutableURL = monitorExecutableURL ?? Self.bundledMonitorExecutableURL()
         self.terminationCallbackScheduler = terminationCallbackScheduler
         self.restartPolicy = restartPolicy
+        self.restartWaitTimeout = restartWaitTimeout
     }
 
     var isRunning: Bool { process?.isRunning ?? false }
@@ -256,6 +260,7 @@ final class ProcessSupervisor: ObservableObject {
     /// SIGINT first so `amp` can run its own graceful shutdown (it prompts about
     /// in-flight threads), escalating to SIGTERM only if it does not exit in time.
     func stop() {
+        restartPendingAfterTermination = false
         if restartLifecycle == .inProgress { restartLifecycle = .aborted }
         launchTask?.cancel()
         launchTask = nil
@@ -263,12 +268,13 @@ final class ProcessSupervisor: ObservableObject {
         restartTask = nil
         isStoppingIntentionally = true
 
-        guard let process, process.isRunning else {
+        guard let process else {
             isStoppingIntentionally = false
             runningAmpVersion = nil
             setStatus(.stopped)
             return
         }
+        guard process.isRunning else { return }
 
         append(logLine: "[amp-runner] sending SIGINT (graceful stop)")
         kill(process.processIdentifier, SIGINT)
@@ -283,7 +289,7 @@ final class ProcessSupervisor: ObservableObject {
 
     func restart() {
         restartLifecycle = .inProgress
-        if isRunning {
+        if process != nil {
             restartAfterStop()
         } else {
             start()
@@ -296,12 +302,18 @@ final class ProcessSupervisor: ObservableObject {
         guard restartTask == nil else { return }
         restartTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let deadline = Date().addingTimeInterval(Self.gracefulShutdownTimeout + 4)
-            while self.isRunning && Date() < deadline {
+            let deadline = Date().addingTimeInterval(self.restartWaitTimeout)
+            while !Task.isCancelled && self.process != nil && Date() < deadline {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             guard !Task.isCancelled else { return }
             self.restartTask = nil
+            guard self.process == nil else {
+                self.append(logLine: "[amp-runner] restart timed out waiting for the previous process to exit")
+                self.restartPendingAfterTermination = true
+                self.restartLifecycle = .failed
+                return
+            }
             self.start()
         }
     }
@@ -555,7 +567,9 @@ final class ProcessSupervisor: ObservableObject {
     ) {
         guard process === finishedProcess else { return }
         let stoppedIntentionally = isStoppingIntentionally
+        let restartAfterTermination = restartPendingAfterTermination
         isStoppingIntentionally = false
+        restartPendingAfterTermination = false
         escalationTask?.cancel()
         escalationTask = nil
 
@@ -597,6 +611,10 @@ final class ProcessSupervisor: ObservableObject {
         activeThread = nil
         activeThreadStartedAt = nil
         closeLogFile()
+        if restartAfterTermination {
+            restartLifecycle = .inProgress
+            start()
+        }
     }
 
     private func scheduleRestart(afterAbnormalExit terminationMessage: String) {

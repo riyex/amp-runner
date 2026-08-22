@@ -304,6 +304,113 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testAutomaticInstallRetriesThreeFailuresThenSuppressesFourthAttempt() async {
+        let failurePair = [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 1, stdout: Data(), stderr: Data("transient".utf8))
+        ]
+        let recorder = CommandRecorder(results: failurePair + failurePair + failurePair)
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) }
+        )
+        controller.synchronizeExecutables([.init(executableURL: url)])
+        await controller.checkNow()
+
+        for _ in 0..<4 {
+            await controller.installOutdatedExecutables(automatic: true)
+        }
+
+        let arguments = await recorder.requests.map(\.arguments)
+        XCTAssertEqual(arguments, [
+            ["version"], ["update", "--porcelain"],
+            ["version"], ["update", "--porcelain"],
+            ["version"], ["update", "--porcelain"]
+        ])
+    }
+
+    @MainActor
+    func testAutomaticProbeFailuresDoNotConsumeInstallAttemptBudget() async {
+        let probeFailure = AmpCommandResult(exitCode: 1, stdout: Data(), stderr: Data("transient".utf8))
+        let recorder = CommandRecorder(results: Array(repeating: probeFailure, count: 5))
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) }
+        )
+
+        await controller.checkNow()
+        controller.synchronizeExecutables([.init(executableURL: url)])
+        await waitUntil { controller.probeErrors[url.path] != nil }
+        for _ in 0..<4 {
+            await controller.installOutdatedExecutables(automatic: true)
+        }
+
+        let arguments = await recorder.requests.map(\.arguments)
+        XCTAssertEqual(arguments, Array(repeating: ["version"], count: 5))
+    }
+
+    @MainActor
+    func testManualCheckHonorsAutomaticInstallWithoutUsingCappedAutomaticAttempt() async {
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("updated 2.0.0\n".utf8), stderr: Data())
+        ])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) }
+        )
+
+        await controller.checkNow()
+        controller.synchronizeExecutables([.init(executableURL: url)])
+        await waitUntil { controller.installedVersions[url.path] == AmpVersion("1.0.0") }
+        controller.setAutomaticInstallEnabled(true)
+
+        await controller.checkNow()
+        let arguments = await recorder.requests.map(\.arguments)
+        XCTAssertEqual(arguments, [["version"], ["version"], ["update", "--porcelain"]])
+        XCTAssertEqual(controller.installedVersions[url.path], AmpVersion("2.0.0"))
+    }
+
+    @MainActor
+    func testAutomaticAttemptBudgetResetsForIdentityReleaseAndEnvironmentChanges() async {
+        var release = "2.0.0"
+        var identity = AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: "old")
+        let failurePair = [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 1, stdout: Data(), stderr: Data("transient".utf8))
+        ]
+        let recorder = CommandRecorder(results: Array(repeating: failurePair, count: 6).flatMap { $0 })
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data(release.utf8) },
+            executeCommand: { try await recorder.execute($0) },
+            readIdentity: { _ in identity }
+        )
+        controller.synchronizeExecutables([.init(executableURL: url, environment: ["PATH": "/old"])])
+        await controller.checkNow()
+        for _ in 0..<4 { await controller.installOutdatedExecutables(automatic: true) }
+
+        identity.fileIdentifier = "new"
+        await controller.installOutdatedExecutables(automatic: true)
+
+        release = "3.0.0"
+        await controller.checkNow()
+        await controller.installOutdatedExecutables(automatic: true)
+
+        controller.synchronizeExecutables([.init(executableURL: url, environment: ["PATH": "/new"])])
+        await controller.installOutdatedExecutables(automatic: true)
+
+        let updateRequests = await recorder.requests.filter { $0.arguments == ["update", "--porcelain"] }
+        XCTAssertEqual(updateRequests.count, 6)
+        XCTAssertEqual(updateRequests[4].environment, ["PATH": "/old"])
+        XCTAssertEqual(updateRequests[5].environment, ["PATH": "/new"])
+    }
+
+    @MainActor
     func testEnvironmentChangeDuringUpdatePublishesAuthoritativeVersionWithoutCurrentMetadataOrStaleState() async {
         let commands = GatedCommands(results: ["1.0.0\n", "updated 2.0.0\n", "2.0.0\n"])
         let url = URL(fileURLWithPath: "/tmp/amp")
