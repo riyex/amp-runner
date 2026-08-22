@@ -138,10 +138,14 @@ final class RunnerCoordinator: ObservableObject {
                 Task { @MainActor [weak self] in
                     await Task.yield()
                     self?.reevaluateUpdateRestarts()
+                    self?.reevaluateUpdateNotifications()
                 }
             }
         (supervisorChanges ?? Empty().eraseToAnyPublisher())
-            .sink { [weak self] in self?.reevaluateUpdateRestarts() }
+            .sink { [weak self] in
+                self?.reevaluateUpdateRestarts()
+                self?.reevaluateUpdateNotifications()
+            }
             .store(in: &updateOrchestrationSubscriptions)
         if let installCompletions {
             installCompletions
@@ -163,6 +167,7 @@ final class RunnerCoordinator: ObservableObject {
 
     func onLaunch() {
         reload()
+        reevaluateUpdateNotifications()
         bookmarks.startAccessingAll(profileIDs: profiles.map(\.id))
         checkAmpSettings()
         startAutoStartProfiles()
@@ -454,6 +459,7 @@ final class RunnerCoordinator: ObservableObject {
         recomputeLoadError()
         applyPreferences(preferences)
         reevaluateUpdateRestarts()
+        reevaluateUpdateNotifications()
     }
 
     func installAvailableUpdate() {
@@ -496,7 +502,41 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     private func handleCompletedInstallBatch() {
+        reevaluateUpdateNotifications(installedBatchCompleted: true)
         reevaluateUpdateRestarts()
+    }
+
+    func reevaluateUpdateNotifications(installedBatchCompleted: Bool = false) {
+        let sources = profiles.map { ($0, updateSource(for: $0)) }
+        let latest = sources.compactMap(\.1.latestVersion).max()
+        let outdatedProfiles = sources.filter { _, source in
+            guard let installed = source.installedVersion, let latest = source.latestVersion else { return false }
+            return installed < latest
+        }
+        let outdatedPaths = Set(outdatedProfiles.compactMap { profile, _ in
+            try? RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: homeDirectoryPath)
+                .executableURL.standardizedFileURL.path
+        })
+        let restartSources = sources.map(\.1).filter { source in
+            source.status.isRunning && requiresRestart(source)
+        }
+        let idleCount = restartSources.filter { source in
+            if case .online = source.status { return !source.hasActiveThread }
+            return false
+        }.count
+        let installedBatchVersion = installedBatchCompleted
+            ? restartSources.compactMap(\.installedVersion).max()
+            : nil
+        notifier.notifyUpdates(input: AmpUpdateNotificationInput(
+            latestVersion: latest,
+            installedBatchVersion: installedBatchVersion,
+            outdatedExecutableCount: outdatedPaths.count,
+            affectedRunnerCount: outdatedProfiles.count,
+            restartRequiredRunnerCount: restartSources.count,
+            idleRunnerCount: idleCount,
+            workingRunnerCount: restartSources.count - idleCount,
+            automaticallyRestartsWhenIdle: updatePreferences.restartsUpdatedRunnersWhenIdle
+        ), enabled: updatePreferences.sendsUpdateNotifications)
     }
 
     private func eligibleUpdateRestartProfileIDs() -> Set<UUID> {
@@ -701,6 +741,12 @@ final class RunnerCoordinator: ObservableObject {
         SettingsWindowOpener.activateApp()
     }
 
+    func openUpdates() {
+        settingsPane = .updates
+        NotificationCenter.default.post(name: .ampRunnerOpenSettingsWindow, object: nil)
+        SettingsWindowOpener.activateApp()
+    }
+
     @discardableResult
     func openURLString(_ urlString: String) -> Bool {
         guard let url = URL(string: urlString) else { return false }
@@ -743,6 +789,12 @@ final class RunnerCoordinator: ObservableObject {
 
         case .viewLogs(let profileID):
             openLogs(profileID: profileID)
+        case .installUpdate:
+            installAvailableUpdate()
+        case .restartAllWhenIdle:
+            restartAllWhenIdle()
+        case .openUpdates:
+            openUpdates()
         }
     }
 }

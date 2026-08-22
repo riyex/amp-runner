@@ -5,6 +5,27 @@ import AmpRunnerCore
 
 final class RunnerUpdateOrchestrationTests: XCTestCase {
     @MainActor
+    func testAggregateNotificationsCountExecutablesAndProfilesOncePerReleaseAndBatch() throws {
+        let fixture = try Fixture()
+        fixture.installed[fixture.path] = AmpVersion("1.0.0")
+        fixture.latest = AmpVersion("2.0.0")
+        fixture.snapshots[fixture.first.id] = .init(status: .online, active: false, running: AmpVersion("1.0.0"))
+        fixture.snapshots[fixture.second.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
+        fixture.load()
+        XCTAssertEqual(fixture.updateRequests.count, 1)
+        XCTAssertEqual(fixture.updateRequests.first?.body, "Update 1 Amp installation used by 2 runners.")
+        fixture.coordinator.reevaluateUpdateNotifications()
+        XCTAssertEqual(fixture.updateRequests.count, 1)
+
+        fixture.installed[fixture.path] = AmpVersion("2.0.0")
+        fixture.installCompletions.send()
+        XCTAssertEqual(fixture.updateRequests.count, 2)
+        XCTAssertEqual(fixture.updateRequests.last?.body, "2 runners need a restart: 1 idle, 1 working.")
+        fixture.installCompletions.send()
+        XCTAssertEqual(fixture.updateRequests.count, 2)
+    }
+
+    @MainActor
     func testJoinsSharedExecutableStateWithPerProfileRunningVersions() throws {
         let fixture = try Fixture()
         fixture.installed[fixture.path] = AmpVersion("2.0.0")
@@ -195,6 +216,7 @@ private final class Fixture {
     var snapshots: [UUID: Snapshot] = [:]
     var restarts: [UUID] = []
     var appliedPreferences: [AmpUpdatePreferences] = []
+    var updateRequests: [RunnerUpdateNotificationRequest] = []
     let changes = PassthroughSubject<Void, Never>()
     let installCompletions = PassthroughSubject<Void, Never>()
 
@@ -223,11 +245,17 @@ private final class Fixture {
             preferenceStore = AmpUpdatePreferencesStore(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)), key: "prefs")
         }
         if let preferences { try preferenceStore.save(preferences) }
+        let notificationDefaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let notifier = RunnerNotifier(defaults: notificationDefaults, deliverUpdate: { [weak self] request in
+            self?.updateRequests.append(request)
+            return true
+        })
         coordinator = RunnerCoordinator(
             homeDirectoryPath: root.path,
             store: profileStore,
             pathSettingsStore: RunnerPathSettingsStore(defaults: try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)), key: "path"),
             inheritedEnvironment: [:],
+            notifier: notifier,
             ampUpdateController: controller,
             ampUpdatePreferencesStore: preferenceStore,
             updateStateSource: { [weak self] profile in

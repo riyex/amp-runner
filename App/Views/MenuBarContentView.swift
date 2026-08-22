@@ -7,6 +7,7 @@ enum SettingsPane: Hashable {
     case profiles
     case environment
     case logs
+    case updates
 }
 
 /// Opens the app's single `Settings` scene from AppKit.

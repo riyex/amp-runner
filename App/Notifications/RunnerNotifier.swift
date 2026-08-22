@@ -5,6 +5,58 @@ import AmpRunnerCore
 enum RunnerNotificationAction: Equatable {
     case openThread(profileID: UUID?, urlString: String?)
     case viewLogs(profileID: UUID)
+    case installUpdate
+    case restartAllWhenIdle
+    case openUpdates
+}
+
+enum RunnerUpdateNotificationCategory: Equatable {
+    case updateAvailable
+    case restartRequired
+}
+
+enum RunnerUpdateNotificationContentAction: Equatable {
+    case installUpdate
+    case restartAllWhenIdle
+    case openUpdates
+}
+
+struct RunnerUpdateNotificationRequest: Equatable {
+    let title: String
+    let body: String
+    let category: RunnerUpdateNotificationCategory
+    let actions: [RunnerUpdateNotificationContentAction]
+}
+
+enum RunnerUpdateNotificationBuilder {
+    static func build(_ event: AmpUpdateNotificationEvent) -> RunnerUpdateNotificationRequest {
+        switch event {
+        case let .updateAvailable(version, executableCount, runnerCount):
+            return RunnerUpdateNotificationRequest(
+                title: "Amp \(version) is available",
+                body: "Update \(executableCount) Amp \(executableCount == 1 ? "installation" : "installations") used by \(runnerCount) \(runnerCount == 1 ? "runner" : "runners").",
+                category: .updateAvailable,
+                actions: [.installUpdate, .openUpdates]
+            )
+        case let .restartRequired(_, runnerCount, idleCount, workingCount, automaticallyRestartsWhenIdle):
+            let body = automaticallyRestartsWhenIdle
+                ? "\(idleCount) \(idleCount == 1 ? "runner" : "runners") restarted; \(workingCount) pending until idle."
+                : "\(runnerCount) runners need a restart: \(idleCount) idle, \(workingCount) working."
+            return RunnerUpdateNotificationRequest(
+                title: "Restart runners to finish updating Amp",
+                body: body,
+                category: .restartRequired,
+                actions: automaticallyRestartsWhenIdle ? [.openUpdates] : [.restartAllWhenIdle, .openUpdates]
+            )
+        }
+    }
+}
+
+enum RunnerUpdateNotificationResponseAction {
+    case installUpdate
+    case restartAllWhenIdle
+    case openUpdates
+    case defaultOpen
 }
 
 /// Posts local notifications for remote-thread lifecycle events.
@@ -26,16 +78,29 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
     private static let runnerCategoryID = "com.riyex.amprunner.notification.runner"
     private static let openThreadActionID = "com.riyex.amprunner.notification.action.openThread"
     private static let viewLogsActionID = "com.riyex.amprunner.notification.action.viewLogs"
+    private static let updateAvailableCategoryID = "com.riyex.amprunner.notification.updateAvailable"
+    private static let restartRequiredCategoryID = "com.riyex.amprunner.notification.restartRequired"
+    private static let automaticRestartRequiredCategoryID = "com.riyex.amprunner.notification.restartRequiredAutomatic"
+    private static let installUpdateActionID = "com.riyex.amprunner.notification.action.installUpdate"
+    private static let restartAllWhenIdleActionID = "com.riyex.amprunner.notification.action.restartAllWhenIdle"
+    private static let openUpdatesActionID = "com.riyex.amprunner.notification.action.openUpdates"
+    private static let lastUpdateAvailableVersionKey = "com.riyex.amprunner.notification.lastUpdateAvailableVersion"
+    private static let lastRestartRequiredVersionKey = "com.riyex.amprunner.notification.lastRestartRequiredVersion"
     private static let profileIDUserInfoKey = "profileID"
     private static let threadURLUserInfoKey = "threadURL"
 
     private let defaults: UserDefaults
     private let center: UNUserNotificationCenter?
+    private let deliverUpdate: ((RunnerUpdateNotificationRequest) -> Bool)?
     private var authorizationRequested = false
     private var isAuthorized = false
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        deliverUpdate: ((RunnerUpdateNotificationRequest) -> Bool)? = nil
+    ) {
         self.defaults = defaults
+        self.deliverUpdate = deliverUpdate
         self.isEnabled = defaults.bool(forKey: Self.enabledKey)
         // `current()` traps in unbundled contexts (e.g. previews / command-line runs);
         // guarding keeps the rest of the app usable there.
@@ -43,6 +108,36 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
         super.init()
         center?.delegate = self
         configureCategories()
+    }
+
+    func notifyUpdates(input: AmpUpdateNotificationInput, enabled: Bool) {
+        let ledger = AmpUpdateNotificationLedger(
+            lastUpdateAvailableVersion: defaults.string(forKey: Self.lastUpdateAvailableVersionKey).flatMap(AmpVersion.init),
+            lastRestartRequiredVersion: defaults.string(forKey: Self.lastRestartRequiredVersionKey).flatMap(AmpVersion.init)
+        )
+        let result = AmpUpdateNotificationPolicy.evaluate(input: input, notificationsEnabled: enabled, ledger: ledger)
+        if let version = result.ledger.lastUpdateAvailableVersion {
+            defaults.set(version.description, forKey: Self.lastUpdateAvailableVersionKey)
+        }
+        if let version = result.ledger.lastRestartRequiredVersion {
+            defaults.set(version.description, forKey: Self.lastRestartRequiredVersionKey)
+        }
+        for event in result.events {
+            let request = RunnerUpdateNotificationBuilder.build(event)
+            if let deliverUpdate {
+                _ = deliverUpdate(request)
+            } else {
+                Task { await post(update: request) }
+            }
+        }
+    }
+
+    func handleUpdateAction(_ action: RunnerUpdateNotificationResponseAction) {
+        switch action {
+        case .installUpdate: actionHandler?(.installUpdate)
+        case .restartAllWhenIdle: actionHandler?(.restartAllWhenIdle)
+        case .openUpdates, .defaultOpen: actionHandler?(.openUpdates)
+        }
     }
 
     func notify(event: RunnerEvent, profileID: UUID, profileName: String) {
@@ -129,6 +224,25 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
         }
     }
 
+    private func post(update request: RunnerUpdateNotificationRequest) async {
+        guard let center, await ensureAuthorized() else { return }
+        let content = UNMutableNotificationContent()
+        content.title = request.title
+        content.body = String(request.body.prefix(400))
+        if request.category == .updateAvailable {
+            content.categoryIdentifier = Self.updateAvailableCategoryID
+        } else if request.actions.contains(.restartAllWhenIdle) {
+            content.categoryIdentifier = Self.restartRequiredCategoryID
+        } else {
+            content.categoryIdentifier = Self.automaticRestartRequiredCategoryID
+        }
+        do {
+            try await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        } catch {
+            NSLog("AmpRunner: failed to post update notification: \(error)")
+        }
+    }
+
     private func configureCategories() {
         guard let center else { return }
 
@@ -155,7 +269,13 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
             intentIdentifiers: [],
             options: []
         )
-        center.setNotificationCategories([threadCategory, runnerCategory])
+        let installUpdate = UNNotificationAction(identifier: Self.installUpdateActionID, title: "Install Update", options: [.foreground])
+        let restartWhenIdle = UNNotificationAction(identifier: Self.restartAllWhenIdleActionID, title: "Restart All When Idle", options: [.foreground])
+        let openUpdates = UNNotificationAction(identifier: Self.openUpdatesActionID, title: "Open Updates", options: [.foreground])
+        let updateCategory = UNNotificationCategory(identifier: Self.updateAvailableCategoryID, actions: [installUpdate, openUpdates], intentIdentifiers: [], options: [])
+        let restartCategory = UNNotificationCategory(identifier: Self.restartRequiredCategoryID, actions: [restartWhenIdle, openUpdates], intentIdentifiers: [], options: [])
+        let automaticRestartCategory = UNNotificationCategory(identifier: Self.automaticRestartRequiredCategoryID, actions: [openUpdates], intentIdentifiers: [], options: [])
+        center.setNotificationCategories([threadCategory, runnerCategory, updateCategory, restartCategory, automaticRestartCategory])
     }
 
     private func metadataBody(
@@ -225,6 +345,17 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
         let threadURLString = userInfo[Self.threadURLUserInfoKey] as? String
 
         switch response.actionIdentifier {
+        case Self.installUpdateActionID:
+            handleUpdateAction(.installUpdate)
+        case Self.restartAllWhenIdleActionID:
+            handleUpdateAction(.restartAllWhenIdle)
+        case Self.openUpdatesActionID:
+            handleUpdateAction(.openUpdates)
+        case UNNotificationDefaultActionIdentifier
+            where response.notification.request.content.categoryIdentifier == Self.updateAvailableCategoryID
+                || response.notification.request.content.categoryIdentifier == Self.restartRequiredCategoryID
+                || response.notification.request.content.categoryIdentifier == Self.automaticRestartRequiredCategoryID:
+            handleUpdateAction(.defaultOpen)
         case UNNotificationDefaultActionIdentifier
             where response.notification.request.content.categoryIdentifier == Self.runnerCategoryID:
             if let profileID {

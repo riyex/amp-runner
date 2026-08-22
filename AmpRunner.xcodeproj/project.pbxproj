@@ -11,6 +11,7 @@
 		053AE2C91F48C933A0BB5FCA /* ProfileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B99C9E4D20EA6093628E900F /* ProfileEditorView.swift */; };
 		0953DD1A441D7DDB9AA97841 /* AmpUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F6F5306F16D96B410137D1 /* AmpUpdateController.swift */; };
 		09F3376350CA6683A5440210 /* EnvironmentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D2C8ED647F818F3F7212EF /* EnvironmentSettingsView.swift */; };
+		1433D5A0CA968EC9D7EC53B4 /* RunnerUpdateNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46458D5735B14FEE52365066 /* RunnerUpdateNotificationTests.swift */; };
 		146028EDADDDE4B2F391B3B8 /* RunnerNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A6C10F3B2C793571179C94 /* RunnerNotifier.swift */; };
 		19C2027CE1933C3354C2222D /* AmpRunnerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 76C5150D90B0542DC543EBCE /* AmpRunnerCore */; };
 		1ABB3C5C0478661CED30D482 /* LogViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF447E482BEEC48CD3319EA0 /* LogViewerView.swift */; };
@@ -107,6 +108,7 @@
 		1E8A30E470847A1D06772BD1 /* ProcessSupervisorVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessSupervisorVersionTests.swift; sourceTree = "<group>"; };
 		31EBFA814C0C90CDC09DFC53 /* SecurityScopedBookmarkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedBookmarkStore.swift; sourceTree = "<group>"; };
 		41F92FCBE70943FE54328050 /* AmpRunnerMonitor */ = {isa = PBXFileReference; includeInIndex = 0; path = AmpRunnerMonitor; sourceTree = BUILT_PRODUCTS_DIR; };
+		46458D5735B14FEE52365066 /* RunnerUpdateNotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerUpdateNotificationTests.swift; sourceTree = "<group>"; };
 		5ECC6E9F4AC9D35EAA8A3D72 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6650D1AB88BBB54B55045780 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		66CB98AAFB0BCD774E800DE2 /* ProfileListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileListView.swift; sourceTree = "<group>"; };
@@ -184,6 +186,7 @@
 				76D6BF77AB80E391024836AC /* AmpCommandExecutorTests.swift */,
 				6FC5440DF13B3E0EC1BBD7B9 /* AmpUpdateControllerTests.swift */,
 				1E8A30E470847A1D06772BD1 /* ProcessSupervisorVersionTests.swift */,
+				46458D5735B14FEE52365066 /* RunnerUpdateNotificationTests.swift */,
 				AE88B05FA3D48010C410E93C /* RunnerUpdateOrchestrationTests.swift */,
 			);
 			path = AmpRunnerAppTests;
@@ -591,6 +594,7 @@
 				98F34F6D0A4534050D101453 /* AmpCommandExecutorTests.swift in Sources */,
 				581D0556259650A7038479F1 /* AmpUpdateControllerTests.swift in Sources */,
 				8617EF07C6A9EFA48EF5E9F7 /* ProcessSupervisorVersionTests.swift in Sources */,
+				1433D5A0CA968EC9D7EC53B4 /* RunnerUpdateNotificationTests.swift in Sources */,
 				A3AA0B13CA68BEE0F67083E1 /* RunnerUpdateOrchestrationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
