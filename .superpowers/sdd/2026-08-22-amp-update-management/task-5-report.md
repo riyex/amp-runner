@@ -163,3 +163,26 @@ Passed 149 tests with 0 failures. `git diff --check` also passed.
 ### Remaining concern
 
 - The checked-in project still has the pre-existing duplicate `AmpRunner.app` output issue when both app targets share a product name. Hosted verification required the temporary test-only product-name workaround described above. Deferred Low fixture cleanup remains out of scope.
+
+## Fix Round 4
+
+### Outcome
+
+- The coordinator PATH race test now explicitly asserts that the late old probe cannot replace the refreshed registration's published `2.0.0` version.
+- Install work records a registration generation before probing/updating. Environment changes and removal/re-registration invalidate environment-specific probe metadata and current install state; stale completions cannot republish those as current.
+- A successful `updated <version>` remains authoritative for a currently registered standardized executable and publishes that version without a post-update probe. Its cache metadata is refreshed only when the registration generation and environment still match. `no update needed` continues to preserve the immediate pre-install probe.
+- Added a deterministic suspended-update test that removes/re-registers the executable with a new PATH, completes `updated 2.0.0`, verifies the authoritative version, verifies stale install state is absent, and proves the new environment still requires exactly one subsequent `amp version` probe.
+
+### RED and verification evidence
+
+- The test was added first. The initial hosted RED command was blocked before Swift compilation by the known duplicate `AmpRunner.app` product-output error. After applying the temporary product-name workaround, the first compile exposed an async assertion-autoclosure error in the new test; that test syntax was corrected before implementation verification.
+- Focused controller/supervisor/registration tests: `TEST SUCCEEDED`, 23 tests, 0 failures (13 controller, 9 supervisor, 1 coordinator registration).
+- Final deterministic suspended-update test rerun after the removal-metadata safeguard: 1 test, 0 failures.
+- Full `swift test`: 149 tests, 0 failures.
+
+### Self-review and concern
+
+- Stale probes remain token-guarded. Install generation checks now cover the post-probe boundary, cache metadata publication, install-state publication, and batch result inclusion.
+- Removal increments the retained generation and clears old probe metadata; re-registration therefore cannot make a pre-removal probe current again.
+- Authoritative porcelain output is published only while the same standardized path is currently registered; no post-update version command was added.
+- The checked-in Xcode project still has the pre-existing duplicate app-product output issue, so hosted verification used and then removed the same temporary App Store product-name workaround. The untracked preserved plan was not modified.

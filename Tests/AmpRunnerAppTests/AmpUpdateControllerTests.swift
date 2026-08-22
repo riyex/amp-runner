@@ -198,6 +198,45 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testEnvironmentChangeDuringUpdatePublishesAuthoritativeVersionWithoutCurrentMetadataOrStaleState() async {
+        let commands = GatedCommands(results: ["1.0.0\n", "updated 2.0.0\n", "2.0.0\n"])
+        let url = URL(fileURLWithPath: "/tmp/amp")
+        let oldEnvironment = ["PATH": "/old/bin"]
+        let newEnvironment = ["PATH": "/new/bin"]
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await commands.execute($0) }
+        )
+        controller.synchronizeExecutables([
+            AmpExecutableRegistration(executableURL: url, environment: oldEnvironment)
+        ])
+        await controller.checkNow()
+
+        let install = Task { await controller.installOutdatedExecutables() }
+        await commands.waitForRequestCount(1)
+        await commands.resume(at: 0)
+        await commands.waitForRequestCount(2)
+        controller.synchronizeExecutables([])
+        controller.synchronizeExecutables([
+            AmpExecutableRegistration(executableURL: url, environment: newEnvironment)
+        ])
+        await commands.resume(at: 1)
+        await install.value
+
+        XCTAssertEqual(controller.installedVersions[url.path], AmpVersion("2.0.0"))
+        XCTAssertNil(controller.installStates[url.path])
+
+        let reprobe = Task { await controller.installedVersion(for: url, environment: newEnvironment) }
+        await commands.waitForRequestCount(3)
+        let requests = await commands.recordedRequests
+        XCTAssertEqual(requests.map(\.arguments), [["version"], ["update", "--porcelain"], ["version"]])
+        XCTAssertEqual(requests[2].environment, newEnvironment)
+        await commands.resume(at: 2)
+        let reprobedVersion = await reprobe.value
+        XCTAssertEqual(reprobedVersion, AmpVersion("2.0.0"))
+    }
+
+    @MainActor
     func testConcurrentInstallCallsCoalesceAndReserveAutomaticAttemptBeforeProbeSuspends() async {
         let commands = GatedCommands(results: ["1.0.0\n", "updated 2.0.0\n"])
         let url = URL(fileURLWithPath: "/tmp/amp")
@@ -405,6 +444,7 @@ final class RunnerCoordinatorUpdateRegistrationTests: XCTestCase {
         XCTAssertEqual(refreshedVersion, AmpVersion("2.0.0"))
         await commands.resume(at: 0)
         _ = await oldProbe.value
+        XCTAssertEqual(controller.installedVersions[profile.ampExecutablePath], AmpVersion("2.0.0"))
 
         try coordinator.delete(profile)
         XCTAssertTrue(controller.registeredExecutableURLs.isEmpty)

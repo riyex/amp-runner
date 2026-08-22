@@ -75,6 +75,7 @@ final class AmpUpdateController: ObservableObject {
     private var automaticAttempts: [String: AutomaticAttempt] = [:]
     private var installBatchTask: Task<Void, Never>?
     private var registeredEnvironments: [String: [String: String]] = [:]
+    private var registrationGenerations: [String: UInt64] = [:]
 
     init(
         fetchRelease: ReleaseFetcher? = nil,
@@ -97,6 +98,7 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func synchronizeExecutables(_ registrations: [AmpExecutableRegistration]) {
+        let previousEnvironments = registeredEnvironments
         var seen = Set<String>()
         registeredExecutableURLs = registrations.compactMap { registration in
             let url = registration.executableURL.standardizedFileURL
@@ -113,6 +115,12 @@ final class AmpUpdateController: ObservableObject {
         let changedEnvironmentPaths = paths.filter {
             registeredEnvironments[$0] != nil && registeredEnvironments[$0] != synchronizedEnvironments[$0]
         }
+        let changedRegistrationPaths = Set(previousEnvironments.keys).union(synchronizedEnvironments.keys).filter {
+            previousEnvironments[$0] != synchronizedEnvironments[$0]
+        }
+        for path in changedRegistrationPaths {
+            registrationGenerations[path, default: 0] &+= 1
+        }
         registeredEnvironments = synchronizedEnvironments
         installStates = installStates.filter { paths.contains($0.key) }
         installedVersions = installedVersions.filter { paths.contains($0.key) }
@@ -121,7 +129,8 @@ final class AmpUpdateController: ObservableObject {
             flight.task.cancel()
             probeTasks[path] = nil
         }
-        for path in changedEnvironmentPaths {
+        for path in changedRegistrationPaths where previousEnvironments[path] != nil {
+            installStates[path] = nil
             probedIdentities[path] = nil
             probedRelease[path] = nil
             probedEnvironments[path] = nil
@@ -287,7 +296,10 @@ final class AmpUpdateController: ObservableObject {
         for url in urls {
             let path = url.path
             let environment = registeredEnvironments[path] ?? ProcessInfo.processInfo.environment
+            let registrationGeneration = registrationGenerations[path, default: 0]
             guard let installed = await probeVersion(for: url, environment: environment, force: true), installed < latestVersion else { continue }
+            guard registrationGenerations[path] == registrationGeneration,
+                  registeredEnvironments[path] == environment else { continue }
             installStates[path] = .installing
             let finalState: AmpExecutableInstallState
             do {
@@ -305,10 +317,15 @@ final class AmpUpdateController: ObservableObject {
                 }
                 switch try AmpUpdateOutput.parse(output) {
                 case let .updated(version):
-                    installedVersions[path] = version
-                    probedIdentities[path] = readIdentity(url)
-                    probedRelease[path] = latestVersion
-                    probedEnvironments[path] = environment
+                    if registeredExecutableURLs.contains(where: { $0.path == path }) {
+                        installedVersions[path] = version
+                    }
+                    if registrationGenerations[path] == registrationGeneration,
+                       registeredEnvironments[path] == environment {
+                        probedIdentities[path] = readIdentity(url)
+                        probedRelease[path] = latestVersion
+                        probedEnvironments[path] = environment
+                    }
                     finalState = .succeeded(version)
                 case .noUpdateNeeded:
                     finalState = .succeeded(installed)
@@ -316,8 +333,11 @@ final class AmpUpdateController: ObservableObject {
             } catch {
                 finalState = .failed(bounded(error.localizedDescription))
             }
-            installStates[path] = finalState
-            results.append(.init(path: path, state: finalState))
+            if registrationGenerations[path] == registrationGeneration,
+               registeredEnvironments[path] == environment {
+                installStates[path] = finalState
+                results.append(.init(path: path, state: finalState))
+            }
         }
         lastCompletedInstallBatch = AmpInstallBatch(completedAt: now(), results: results)
     }
