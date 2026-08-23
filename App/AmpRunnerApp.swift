@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AmpRunnerCore
+import Darwin
 
 @main
 struct AmpRunnerApp: App {
@@ -171,17 +172,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let currentBundleURL = Bundle.main.bundleURL.standardizedFileURL
         let currentProcessID = ProcessInfo.processInfo.processIdentifier
+        let currentLaunchDate = NSRunningApplication.current.launchDate
+        let currentProcessStartTime = Self.processStartTime(for: currentProcessID)
         let olderMatchingInstanceExists = NSWorkspace.shared.runningApplications.contains { application in
             application.bundleIdentifier == bundleIdentifier
                 && application.bundleURL?.standardizedFileURL == currentBundleURL
-                && application.processIdentifier > 0
-                && application.processIdentifier < currentProcessID
+                && Self.wasLaunchedBeforeCurrentProcess(
+                    candidateLaunchDate: application.launchDate,
+                    candidateProcessID: application.processIdentifier,
+                    candidateProcessStartTime: Self.processStartTime(for: application.processIdentifier),
+                    currentLaunchDate: currentLaunchDate,
+                    currentProcessID: currentProcessID,
+                    currentProcessStartTime: currentProcessStartTime
+                )
         }
 
         if olderMatchingInstanceExists {
             NSApp.terminate(nil)
         }
         return olderMatchingInstanceExists
+    }
+
+    static func wasLaunchedBeforeCurrentProcess(
+        candidateLaunchDate: Date?,
+        candidateProcessID: pid_t,
+        candidateProcessStartTime: ProcessStartTime?,
+        currentLaunchDate: Date?,
+        currentProcessID: pid_t,
+        currentProcessStartTime: ProcessStartTime?
+    ) -> Bool {
+        guard candidateProcessID > 0, candidateProcessID != currentProcessID else { return false }
+
+        if let candidateLaunchDate, let currentLaunchDate, candidateLaunchDate != currentLaunchDate {
+            return candidateLaunchDate < currentLaunchDate
+        }
+
+        if let candidateProcessStartTime,
+           let currentProcessStartTime,
+           candidateProcessStartTime != currentProcessStartTime {
+            return candidateProcessStartTime < currentProcessStartTime
+        }
+
+        let launchDatesMatch = candidateLaunchDate != nil && candidateLaunchDate == currentLaunchDate
+        let processStartTimesMatch = candidateProcessStartTime != nil
+            && candidateProcessStartTime == currentProcessStartTime
+        if launchDatesMatch || processStartTimesMatch {
+            // Exact ties need a stable winner so simultaneous launches cannot terminate each other.
+            return candidateProcessID < currentProcessID
+        }
+
+        // If macOS withholds chronology, conservatively yield to the matching process
+        // that NSWorkspace already reports rather than leave a persistent duplicate.
+        return true
+    }
+
+    struct ProcessStartTime: Equatable, Comparable {
+        let seconds: UInt64
+        let microseconds: UInt64
+
+        static func < (lhs: ProcessStartTime, rhs: ProcessStartTime) -> Bool {
+            (lhs.seconds, lhs.microseconds) < (rhs.seconds, rhs.microseconds)
+        }
+    }
+
+    private static func processStartTime(for processID: pid_t) -> ProcessStartTime? {
+        guard processID > 0 else { return nil }
+
+        var processInfo = proc_bsdinfo()
+        let expectedSize = Int32(MemoryLayout<proc_bsdinfo>.stride)
+        guard proc_pidinfo(processID, PROC_PIDTBSDINFO, 0, &processInfo, expectedSize) == expectedSize else {
+            return nil
+        }
+        return ProcessStartTime(
+            seconds: processInfo.pbi_start_tvsec,
+            microseconds: processInfo.pbi_start_tvusec
+        )
     }
 }
 
