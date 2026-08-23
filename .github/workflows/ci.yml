@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Test release tooling
-        run: ./Scripts/tests/validate_release_branch_test.sh
+        run: ./Scripts/tests/run_release_tool_tests.sh
 
       - name: Run Swift tests
         run: swift test

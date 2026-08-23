@@ -78,7 +78,7 @@ is run.
 ## 3. Distribution recommendation
 
 **Ship Amp Runner with Developer ID signing + Hardened Runtime + notarization, distributed
-directly — a notarized `.dmg`/`.zip` download or a Homebrew cask. Do not ship it on the
+directly — a notarized drag-to-Applications `.dmg` download or a Homebrew cask. Do not ship it on the
 Mac App Store.**
 
 This is not a preference about review overhead. The App Sandbox that the Mac App Store
@@ -234,5 +234,5 @@ clobber.
 - **M4 — Notifications + login item.** `UNUserNotificationCenter` events for thread
   start/finish/failure and the `SMAppService` login-item toggle.
 - **M5 — Signing, notarization, distribution.** Developer ID signing with Hardened
-  Runtime, `notarytool` submission and stapling, and a Homebrew cask or notarized
-  `.dmg`/`.zip` release.
+  Runtime, `notarytool` submission and stapling, and a notarized drag-to-Applications
+  `.dmg` release with checksum and provenance manifest.

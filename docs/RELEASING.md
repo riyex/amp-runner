@@ -1,12 +1,13 @@
 # Releasing Amp Runner
 
-Releases are built, signed, and notarized on the maintainer's Mac. GitHub Actions validates
-release branches and produces an unsigned diagnostic archive; it does not hold signing
-credentials or publish binaries.
+Releases use two local commands. The first builds, signs, packages, notarizes, and verifies
+a DMG. The second pushes the release tag and creates or updates a draft GitHub Release.
+Apple credentials stay in the maintainer's Keychain; GitHub Actions produces only an
+unsigned diagnostic archive.
 
-## 1. Prepare the release branch
+## 1. Commit the release identity
 
-Start from an up-to-date `main`:
+Start from an up-to-date `main` and create a release branch:
 
 ```sh
 git switch main
@@ -14,112 +15,149 @@ git pull --ff-only
 git switch -c release/X.Y.Z
 ```
 
-Set `MARKETING_VERSION` in `project.yml` to `X.Y.Z`. Increment
-`CURRENT_PROJECT_VERSION`; it is an integer build number and must increase for every build
-submitted to Apple services, including retries that change the binary.
+Set both release values in `project.yml` before tagging or building:
 
-Validate the branch name against the project:
+```yaml
+MARKETING_VERSION: "X.Y.Z"
+CURRENT_PROJECT_VERSION: "N"
+```
+
+`CURRENT_PROJECT_VERSION` is a non-negative integer. Increase it for every binary submitted
+to Apple's notarization service, including a retry that changes the binary. Release scripts
+read this committed value and never increment or edit it.
+
+Validate, commit, and push the branch:
 
 ```sh
 ./Scripts/validate_release_branch.sh release/X.Y.Z
+git add project.yml
+git commit -m "chore(release): prepare X.Y.Z"
+git push -u origin release/X.Y.Z
 ```
 
-Commit and push the version change. The Release Preparation workflow runs tests, validates
-the project, and uploads an artifact named `unsigned-not-for-distribution`. It is useful
-for inspecting archive structure only. Do not distribute or notarize that artifact.
+The Release Preparation workflow runs tests and creates an unsigned artifact named
+`unsigned-not-for-distribution`. Use it only to inspect archive structure. Never distribute
+or notarize it.
 
-Merge the release branch after its checks pass. Update the local `main` and perform every
-remaining step from the exact commit that will be tagged:
+Merge the approved release PR, update local `main`, and pause other merges until the draft
+release exists:
 
 ```sh
 git switch main
 git pull --ff-only
-test "$(./Scripts/validate_release_branch.sh release/X.Y.Z)" = "X.Y.Z"
 ```
 
-Do not merge another change into `main` until the release is tagged, or restart the build
-from the new commit.
+## 2. Create and check out the local tag
 
-## 2. Archive and verify signatures
-
-The archive script requests a Developer ID Application identity and rejects an archive
-whose helper or app has any other authority. Set `CODE_SIGN_IDENTITY` to a full identity
-name if Xcode has more than one Developer ID certificate available:
+Create an annotated tag on the merged release commit. A signed annotated tag is also
+accepted when Git signing is configured.
 
 ```sh
-rm -rf build/AmpRunner.xcarchive
-DEVELOPMENT_TEAM=YOUR_TEAM_ID \
-  ARCHIVE_PATH="$PWD/build/AmpRunner.xcarchive" \
-  ./Scripts/build_developer_id.sh
+VERSION=X.Y.Z
+git status --short
+git tag -a "v$VERSION" -m "Amp Runner $VERSION"
+git switch --detach "v$VERSION"
+git describe --exact-match --tags
+git rev-parse HEAD
 ```
 
-Find the team ID in the Apple Developer portal or the parenthesized suffix of
-`security find-identity -v -p codesigning`. The team ID is not a credential, but keeping it
-outside `project.yml` lets each maintainer sign with their own account.
+Do not push the tag yet. Phase 1 requires a clean detached checkout exactly at this
+annotated tag and rejects a branch checkout, lightweight tag, version mismatch, or
+uncommitted file.
 
-Verify the helper first, then the containing app:
+## 3. Configure the maintainer Mac
+
+Install the intended Developer ID Application certificate in the login Keychain. Find its
+team ID in the Apple Developer portal or in the parenthesized suffix printed by:
 
 ```sh
-APP="$PWD/build/AmpRunner.xcarchive/Products/Applications/AmpRunner.app"
-codesign --verify --strict --verbose=2 "$APP/Contents/Helpers/AmpRunnerMonitor"
-codesign --verify --strict --verbose=2 "$APP"
-codesign -dv --verbose=4 "$APP"
+security find-identity -v -p codesigning
 ```
 
-Confirm that the displayed authority is the intended Developer ID and that Hardened
-Runtime is enabled.
-
-## 3. Notarize and assess
-
-Create the Keychain profile once; do not put App Store Connect credentials in this
-repository or in shell history:
+Store notarization credentials once. The profile contains the credential; its name is not
+a secret.
 
 ```sh
 xcrun notarytool store-credentials "AmpRunner Notary"
 ```
 
-Submit a temporary ZIP, wait for Apple, and staple the accepted ticket:
+Install the local build dependencies if needed:
 
 ```sh
-ditto -c -k --keepParent "$APP" build/AmpRunner-notarization.zip
-xcrun notarytool submit \
-  build/AmpRunner-notarization.zip \
-  --keychain-profile "AmpRunner Notary" \
-  --wait
-xcrun stapler staple "$APP"
-xcrun stapler validate "$APP"
-spctl --assess --type execute --verbose=2 "$APP"
+brew install xcodegen
+gh auth login
 ```
 
-Stop if any signature, notarization, stapling, or Gatekeeper check fails.
+## 4. Phase 1: prepare local release assets
 
-## 4. Package and smoke-test
-
-Create the distributable and checksum from the stapled app:
+Run the preparation command from the detached tag checkout:
 
 ```sh
-VERSION=X.Y.Z
-ditto -c -k --sequesterRsrc --keepParent \
-  "$APP" \
-  "build/AmpRunner-$VERSION.zip"
-(cd build && \
-  shasum -a 256 "AmpRunner-$VERSION.zip" > "AmpRunner-$VERSION.sha256")
+DEVELOPMENT_TEAM=YOUR_TEAM_ID \
+  ./Scripts/prepare_release.sh "v$VERSION"
 ```
 
-Extract that ZIP into a clean directory. Launch the extracted app, create a disposable
-profile, start and stop a runner, inspect its logs, and quit the app while a runner is
-active to confirm the bundled monitor stops it.
+Optional environment variables:
 
-## 5. Tag and publish
+- `CODE_SIGN_IDENTITY` selects a full Developer ID identity when the Keychain contains
+  more than one; it defaults to `Developer ID Application`.
+- `NOTARY_PROFILE` selects a `notarytool` Keychain profile; it defaults to
+  `AmpRunner Notary`.
+- `BUILD_DIR` changes the output directory; it defaults to `build`.
 
-Only tag the commit whose packaged app passed every preceding check:
+Phase 1 runs release-tool and Swift tests, validates resources, builds the app and embedded
+monitor with the committed build number, verifies Developer ID signatures and Hardened
+Runtime, rejects `get-task-allow`, creates and signs a drag-to-Applications DMG, notarizes
+and staples the DMG, runs Gatekeeper assessment, and validates all metadata. It produces:
+
+```text
+build/AmpRunner-X.Y.Z.dmg
+build/AmpRunner-X.Y.Z.dmg.sha256
+build/AmpRunner-X.Y.Z.provenance.json
+```
+
+Stop if any command fails. The script does not push a tag or change GitHub state.
+
+## 5. Smoke-test the DMG
+
+Mount `build/AmpRunner-X.Y.Z.dmg` and confirm that it contains `AmpRunner.app` and an
+`Applications` alias. Drag the app into an empty temporary directory that represents
+Applications, then test the copied app rather than the archived app:
+
+1. Launch it through Finder so Gatekeeper evaluates it.
+2. Create a disposable profile.
+3. Start and stop a runner and inspect its logs.
+4. Start another runner, quit Amp Runner, and confirm the bundled monitor stops the runner.
+5. Eject the image.
+
+Rebuild with a new committed `CURRENT_PROJECT_VERSION` if testing reveals a change that
+requires another binary.
+
+## 6. Phase 2: create the draft GitHub Release
+
+After the smoke test passes, run:
 
 ```sh
-git status --short
-git tag -a "v$VERSION" -m "Amp Runner $VERSION"
-git push origin "v$VERSION"
+./Scripts/publish_release.sh "v$VERSION"
 ```
 
-Create the GitHub Release for that tag. Attach the notarized ZIP and `.sha256` file, and
-describe user-visible changes and known limitations. Never attach the unsigned workflow
-artifact.
+Phase 2 revalidates the local tag, checksum, and provenance before contacting GitHub. It
+then:
+
+1. confirms that `origin` matches the repository authenticated through `gh`;
+2. pushes the tag if it is missing, or verifies that an existing remote tag resolves to
+   the same commit;
+3. creates a draft release with generated notes, or replaces assets on an existing draft;
+4. uploads the DMG, checksum, and provenance manifest.
+
+The command rejects conflicting remote tags and already-published releases. It never
+publishes the draft. If GitHub fails after the tag push, rerun the same command; matching
+remote state is safe and the draft creation or asset upload resumes.
+
+## 7. Review and publish
+
+Open the draft on GitHub. Check its tag and commit, edit generated notes, download all
+three assets, verify the checksum, and repeat the Gatekeeper launch from the downloaded
+DMG. Publish the draft through GitHub only after these checks pass.
+
+Never attach the unsigned GitHub Actions artifact to a public release.
