@@ -62,11 +62,14 @@ Generate the Xcode project and open it:
 open AmpRunner.xcodeproj
 ```
 
-Or create a Release archive for the Developer ID target from the command line:
+Maintainers can prepare a signed and notarized DMG from an annotated release tag:
 
 ```sh
-./Scripts/build_developer_id.sh
+DEVELOPMENT_TEAM=YOUR_TEAM_ID ./Scripts/prepare_release.sh vX.Y.Z
 ```
+
+See the [release runbook](docs/RELEASING.md) for versioning, tagging, smoke testing, and
+draft GitHub Release publication.
 
 Two app targets are generated from the same sources:
 
