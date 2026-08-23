@@ -235,7 +235,7 @@ final class RunnerCoordinator: ObservableObject {
             versionProvider: { [weak self] command, environment in
                 guard let self else { return nil }
                 return await self.ampUpdateController.installedVersion(
-                    for: command.executableURL,
+                    for: self.updateExecutableURL(for: command, environment: environment),
                     environment: environment
                 )
             }
@@ -441,7 +441,8 @@ final class RunnerCoordinator: ObservableObject {
                 homeDirectoryPath: homeDirectoryPath
             ) else { return nil }
             return AmpExecutableRegistration(
-                executableURL: command.executableURL,
+                executableURL: updateExecutableURL(for: command, environment: environment),
+                configuredExecutableURL: command.executableURL,
                 environment: environment
             )
         }
@@ -684,7 +685,7 @@ final class RunnerCoordinator: ObservableObject {
         let path = (try? RunnerCommandBuilder.resolve(
             profile: profile,
             homeDirectoryPath: homeDirectoryPath
-        ).executableURL.standardizedFileURL.path) ?? ""
+        )).map { updateExecutableURL(for: $0, environment: runnerEnvironment()).path } ?? ""
         return RunnerUpdateStateSource(
             status: supervisor?.status ?? .stopped,
             hasActiveThread: supervisor?.activeThread != nil,
@@ -693,6 +694,16 @@ final class RunnerCoordinator: ObservableObject {
             latestVersion: ampUpdateController.latestVersion,
             installState: ampUpdateController.installStates[path],
             restartLifecycle: supervisor?.restartLifecycle ?? .none
+        )
+    }
+
+    private func updateExecutableURL(
+        for command: ResolvedRunnerCommand,
+        environment: [String: String]
+    ) -> URL {
+        AmpExecutableResolver.resolveUpdateExecutable(
+            configuredURL: command.executableURL,
+            environment: environment
         )
     }
 
