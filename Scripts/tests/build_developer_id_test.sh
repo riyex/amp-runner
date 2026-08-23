@@ -38,6 +38,8 @@ case "$1" in
 esac
 EOF
 chmod +x "$TMP/bin/"*
+CODE_SIGN_IDENTITY='Developer ID Application: Example (TEAM)'
+export CODE_SIGN_IDENTITY
 before=$(shasum "$TMP/project.yml")
 COMMAND_LOG="$TMP/log" PROJECT_FILE="$TMP/project.yml" ARCHIVE_PATH="$ARCHIVE" BUILD_DIR="$TMP" \
 GENERATE_PROJECT_COMMAND="$TMP/bin/generate" XCODEBUILD_COMMAND="$TMP/bin/xcodebuild" CODESIGN_COMMAND="$TMP/bin/codesign" PLUTIL_COMMAND="$TMP/bin/plutil" DEVELOPMENT_TEAM=TEAM \
