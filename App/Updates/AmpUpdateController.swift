@@ -5,15 +5,23 @@ import AmpRunnerCore
 
 struct AmpExecutableRegistration: Equatable, Sendable {
     let executableURL: URL
+    let configuredExecutableURL: URL
     let environment: [String: String]
 
     init(
         executableURL: URL,
+        configuredExecutableURL: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.executableURL = executableURL
+        self.configuredExecutableURL = configuredExecutableURL ?? executableURL
         self.environment = environment
     }
+}
+
+struct AmpExecutableUsage: Equatable, Sendable {
+    let runnerCount: Int
+    let alternatePathCount: Int
 }
 
 struct AmpExecutableIdentity: Equatable, Sendable {
@@ -70,6 +78,7 @@ final class AmpUpdateController: ObservableObject {
     @Published private(set) var checkState: AmpUpdateCheckState = .idle
     @Published private(set) var checkError: String?
     @Published private(set) var registeredExecutableURLs: [URL] = []
+    @Published private(set) var registeredExecutableUsage: [String: AmpExecutableUsage] = [:]
     @Published private(set) var installedVersions: [String: AmpVersion] = [:]
     @Published private(set) var probeErrors: [String: String] = [:]
     @Published private(set) var installStates: [String: AmpExecutableInstallState] = [:]
@@ -124,6 +133,18 @@ final class AmpUpdateController: ObservableObject {
             return seen.insert(url.path).inserted ? url : nil
         }
         let paths = Set(registeredExecutableURLs.map(\.path))
+        registeredExecutableUsage = Dictionary(grouping: registrations) {
+            $0.executableURL.standardizedFileURL.path
+        }.mapValues { registrations in
+            let canonicalPath = registrations[0].executableURL.standardizedFileURL.path
+            let alternatePaths = Set(registrations.map {
+                $0.configuredExecutableURL.standardizedFileURL.path
+            }).subtracting([canonicalPath])
+            return AmpExecutableUsage(
+                runnerCount: registrations.count,
+                alternatePathCount: alternatePaths.count
+            )
+        }
         var synchronizedEnvironments: [String: [String: String]] = [:]
         for registration in registrations {
             let path = registration.executableURL.standardizedFileURL.path

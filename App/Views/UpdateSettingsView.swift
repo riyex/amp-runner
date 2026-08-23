@@ -105,12 +105,23 @@ struct UpdateSettingsView: View {
             Text(path).lineLimit(1).truncationMode(.middle).help(path)
             Text(presentation.versionText)
                 .font(.caption).foregroundStyle(.secondary)
+            if let usage = coordinator.ampUpdateController.registeredExecutableUsage[path] {
+                Text(executableUsageText(usage))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let error = presentation.errorText {
                 Text(error)
                     .font(.caption).foregroundStyle(.red).lineLimit(3).help(error)
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func executableUsageText(_ usage: AmpExecutableUsage) -> String {
+        let runners = "Used by \(usage.runnerCount) runner\(usage.runnerCount == 1 ? "" : "s")"
+        guard usage.alternatePathCount > 0 else { return runners }
+        let paths = "\(usage.alternatePathCount) via alternate path\(usage.alternatePathCount == 1 ? "" : "s")"
+        return "\(runners); \(paths)"
     }
 
     private func restartAllNow() {

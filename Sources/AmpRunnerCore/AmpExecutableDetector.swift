@@ -58,3 +58,55 @@ public enum AmpExecutableDetector {
         return paths.filter { seen.insert($0).inserted }
     }
 }
+
+/// Resolves launch aliases to the physical Amp installation that owns updates.
+public enum AmpExecutableResolver {
+    private static let ampPathWrapperCommand = #"exec "${AMP_HOME:-$HOME/.amp}/bin/amp" "$@""#
+    private static let maximumWrapperSize = 4_096
+
+    public static func resolveUpdateExecutable(
+        configuredURL: URL,
+        environment: [String: String],
+        fileManager: FileManager = .default
+    ) -> URL {
+        let resolvedConfiguredURL = configuredURL.standardizedFileURL.resolvingSymlinksInPath()
+        guard isAmpPathWrapper(at: resolvedConfiguredURL, fileManager: fileManager) else {
+            return resolvedConfiguredURL
+        }
+
+        let ampHomePath: String
+        if let configuredAmpHome = environment["AMP_HOME"], !configuredAmpHome.isEmpty {
+            guard configuredAmpHome.hasPrefix("/") else { return resolvedConfiguredURL }
+            ampHomePath = configuredAmpHome
+        } else {
+            guard let homePath = environment["HOME"], homePath.hasPrefix("/") else {
+                return resolvedConfiguredURL
+            }
+            ampHomePath = "\(homePath)/.amp"
+        }
+        let targetURL = URL(fileURLWithPath: ampHomePath, isDirectory: true)
+            .appendingPathComponent("bin/amp")
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        guard fileManager.isExecutableFile(atPath: targetURL.path),
+              (try? targetURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+            return resolvedConfiguredURL
+        }
+        return targetURL
+    }
+
+    private static func isAmpPathWrapper(at url: URL, fileManager: FileManager) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
+              values.isRegularFile == true,
+              let fileSize = values.fileSize,
+              fileSize <= maximumWrapperSize,
+              let contents = try? String(contentsOf: url, encoding: .utf8) else {
+            return false
+        }
+        let commands = contents
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        return commands == [ampPathWrapperCommand]
+    }
+}
