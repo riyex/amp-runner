@@ -8,7 +8,7 @@ final class RunnerUpdateNotificationTests: XCTestCase {
             version: AmpVersion("2.0.0")!, executableCount: 2, runnerCount: 7
         ))
         XCTAssertEqual(update.title, "Amp 2.0.0 is available")
-        XCTAssertEqual(update.body, "Update 2 Amp installations used by 7 runners.")
+        XCTAssertEqual(update.body, "Update available for 7 runners across 2 Amp installations.")
         XCTAssertEqual(update.category, .updateAvailable)
         XCTAssertEqual(update.actions, [.installUpdate, .openUpdates])
 
@@ -21,6 +21,18 @@ final class RunnerUpdateNotificationTests: XCTestCase {
         XCTAssertEqual(restart.actions, [.restartAllWhenIdle, .openUpdates])
     }
 
+    func testUpdateLifecycleStagesShareReplacementIdentifier() {
+        let update = RunnerUpdateNotificationBuilder.build(.updateAvailable(
+            version: AmpVersion("2.0.0")!, executableCount: 1, runnerCount: 2
+        ))
+        let restart = RunnerUpdateNotificationBuilder.build(.restartRequired(
+            version: AmpVersion("2.0.0")!, runnerCount: 2, idleCount: 2,
+            workingCount: 0, automaticallyRestartsWhenIdle: true
+        ))
+
+        XCTAssertEqual(update.identifier, restart.identifier)
+    }
+
     func testAutomaticRestartContentSummarizesProgressAndOnlyOpensUpdates() {
         let content = RunnerUpdateNotificationBuilder.build(.restartRequired(
             version: AmpVersion("2.0.0")!, runnerCount: 3, idleCount: 1,
@@ -28,6 +40,29 @@ final class RunnerUpdateNotificationTests: XCTestCase {
         ))
         XCTAssertEqual(content.body, "1 idle runner will restart now; 2 working runners will restart when idle.")
         XCTAssertEqual(content.actions, [.openUpdates])
+    }
+
+    @MainActor
+    func testRestartStageSupersedesUpdateAvailableStageFromSameEvaluation() throws {
+        let suite = "RunnerUpdateNotificationTests-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var attempts = [RunnerUpdateNotificationRequest]()
+        let notifier = RunnerNotifier(defaults: defaults, deliverUpdate: { request in
+            attempts.append(request)
+            return true
+        })
+
+        notifier.notifyUpdates(input: .init(
+            latestVersion: AmpVersion("3.0.0"), installedBatchVersion: AmpVersion("2.0.0"),
+            installedBatchIdentity: "batch-1", outdatedExecutableCount: 1,
+            affectedRunnerCount: 2, restartRequiredRunnerCount: 1,
+            idleRunnerCount: 1, workingRunnerCount: 0,
+            automaticallyRestartsWhenIdle: true
+        ), enabled: true)
+
+        XCTAssertEqual(attempts.count, 1)
+        XCTAssertEqual(attempts.first?.category, .restartRequired)
     }
 
     @MainActor
