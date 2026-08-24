@@ -1,6 +1,7 @@
 import XCTest
 import Combine
 import AmpRunnerCore
+import Darwin
 @testable import AmpRunner
 
 final class ProcessSupervisorVersionTests: XCTestCase {
@@ -234,13 +235,17 @@ final class ProcessSupervisorVersionTests: XCTestCase {
     @MainActor
     func testDuplicateRunnerOwnershipErrorDoesNotEmitThreadFailureOrRetry() async throws {
         let detail = "Error: Another Amp process is already serving remote threads for /tmp/project (pid 61439)"
-        let fixture = try SupervisorFixture(ampScript: "#!/bin/sh\necho '\(detail)' >&2\nexit 1\n")
+        let fixture = try SupervisorFixture(
+            ampScript: "#!/bin/sh\nwhile [ ! -f \"$0.go\" ]; do sleep 0.01; done\nsleep 5 &\nprintf '%s' '\(detail)' >&2\nexit 1\n"
+        )
         let counter = ProbeCounter()
+        let terminationCallback = TerminationCallbackBox()
         let supervisor = ProcessSupervisor(
             profile: fixture.profile,
             homeDirectoryPath: fixture.root.path,
             versionProvider: { _, _ in await counter.record() },
             monitorExecutableURL: fixture.monitorURL,
+            terminationCallbackScheduler: { terminationCallback.store($0) },
             restartPolicy: RunnerRestartPolicy(delays: [0])
         )
         var events: [RunnerEvent] = []
@@ -248,6 +253,14 @@ final class ProcessSupervisorVersionTests: XCTestCase {
         defer { eventsSubscription.cancel() }
 
         supervisor.start()
+        try await waitUntil { supervisor.isRunning }
+        FileManager.default.createFile(atPath: fixture.ampURL.path + ".go", contents: Data())
+        let callbackDeadline = Date().addingTimeInterval(2)
+        while !terminationCallback.isPending && Date() < callbackDeadline {
+            usleep(10_000)
+        }
+        XCTAssertTrue(terminationCallback.isPending)
+        terminationCallback.run()
         try await waitUntil { !supervisor.isRunning && supervisor.status == .error(detail) }
         try await Task.sleep(for: .milliseconds(100))
 
@@ -320,6 +333,32 @@ private final class SupervisorFixture {
 
     deinit {
         try? FileManager.default.removeItem(at: root)
+    }
+}
+
+private final class TerminationCallbackBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var callback: (@MainActor () -> Void)?
+
+    var isPending: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return callback != nil
+    }
+
+    func store(_ callback: @escaping @MainActor () -> Void) {
+        lock.lock()
+        self.callback = callback
+        lock.unlock()
+    }
+
+    @MainActor
+    func run() {
+        lock.lock()
+        let callback = callback
+        self.callback = nil
+        lock.unlock()
+        callback?()
     }
 }
 

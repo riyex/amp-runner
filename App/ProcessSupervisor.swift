@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import AmpRunnerCore
+import Darwin
 
 typealias AmpVersionProvider = (ResolvedRunnerCommand, [String: String]) async -> AmpVersion?
 typealias TerminationCallbackScheduler = (@escaping @MainActor () -> Void) -> Void
@@ -203,21 +204,20 @@ final class ProcessSupervisor: ObservableObject {
         process.standardOutput = out
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
+        let outputBuffer = ProcessOutputBuffer()
 
         out.fileHandleForReading.readabilityHandler = { [weak self, weak process] handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
+            guard outputBuffer.captureAvailableData(from: handle, isStandardError: false) else { return }
             Task { @MainActor in
                 guard let self, let process, self.process === process else { return }
-                self.ingest(data, isStandardError: false)
+                self.drain(outputBuffer: outputBuffer)
             }
         }
         err.fileHandleForReading.readabilityHandler = { [weak self, weak process] handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
+            guard outputBuffer.captureAvailableData(from: handle, isStandardError: true) else { return }
             Task { @MainActor in
                 guard let self, let process, self.process === process else { return }
-                self.ingest(data, isStandardError: true)
+                self.drain(outputBuffer: outputBuffer)
             }
         }
 
@@ -225,10 +225,19 @@ final class ProcessSupervisor: ObservableObject {
         process.terminationHandler = { [weak self, weak out, weak err] finished in
             let reason = finished.terminationReason
             let code = finished.terminationStatus
+            out?.fileHandleForReading.readabilityHandler = nil
+            err?.fileHandleForReading.readabilityHandler = nil
+            outputBuffer.captureRemainingData(
+                standardOutput: out?.fileHandleForReading,
+                standardError: err?.fileHandleForReading
+            )
             terminationCallbackScheduler {
-                out?.fileHandleForReading.readabilityHandler = nil
-                err?.fileHandleForReading.readabilityHandler = nil
-                self?.handleTermination(process: finished, reason: reason, exitCode: code)
+                self?.handleTermination(
+                    process: finished,
+                    reason: reason,
+                    exitCode: code,
+                    outputBuffer: outputBuffer
+                )
             }
         }
 
@@ -398,6 +407,16 @@ final class ProcessSupervisor: ObservableObject {
 
         for line in lines {
             handle(line: line)
+        }
+    }
+
+    private func drain(outputBuffer: ProcessOutputBuffer) {
+        let output = outputBuffer.take()
+        if !output.standardOutput.isEmpty {
+            ingest(output.standardOutput, isStandardError: false)
+        }
+        if !output.standardError.isEmpty {
+            ingest(output.standardError, isStandardError: true)
         }
     }
 
@@ -575,7 +594,8 @@ final class ProcessSupervisor: ObservableObject {
     private func handleTermination(
         process finishedProcess: Process,
         reason: Process.TerminationReason,
-        exitCode: Int32
+        exitCode: Int32,
+        outputBuffer: ProcessOutputBuffer
     ) {
         guard process === finishedProcess else { return }
         let stoppedIntentionally = isStoppingIntentionally
@@ -587,6 +607,7 @@ final class ProcessSupervisor: ObservableObject {
 
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        drain(outputBuffer: outputBuffer)
         flushRemainders()
         let launchError = terminalLaunchError
         terminalLaunchError = nil
@@ -708,6 +729,68 @@ final class ProcessSupervisor: ObservableObject {
     private func closeLogFile() {
         try? logFileHandle?.close()
         logFileHandle = nil
+    }
+}
+
+private final class ProcessOutputBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var standardOutput = Data()
+    private var standardError = Data()
+
+    func captureAvailableData(from handle: FileHandle, isStandardError: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let data = handle.availableData
+        append(data, isStandardError: isStandardError)
+        return !data.isEmpty
+    }
+
+    func captureRemainingData(standardOutput: FileHandle?, standardError: FileHandle?) {
+        lock.lock()
+        defer { lock.unlock() }
+        if let standardOutput {
+            captureRemainingData(from: standardOutput, isStandardError: false)
+        }
+        if let standardError {
+            captureRemainingData(from: standardError, isStandardError: true)
+        }
+    }
+
+    func take() -> (standardOutput: Data, standardError: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = (standardOutput, standardError)
+        standardOutput = Data()
+        standardError = Data()
+        return result
+    }
+
+    private func append(_ data: Data, isStandardError: Bool) {
+        if isStandardError {
+            standardError.append(data)
+        } else {
+            standardOutput.append(data)
+        }
+    }
+
+    private func captureRemainingData(from handle: FileHandle, isStandardError: Bool) {
+        let descriptor = handle.fileDescriptor
+        let originalFlags = fcntl(descriptor, F_GETFL)
+        guard originalFlags >= 0,
+              fcntl(descriptor, F_SETFL, originalFlags | O_NONBLOCK) >= 0
+        else {
+            return
+        }
+        defer { _ = fcntl(descriptor, F_SETFL, originalFlags) }
+
+        var bytes = [UInt8](repeating: 0, count: 4_096)
+        while true {
+            let count = bytes.withUnsafeMutableBytes { buffer in
+                Darwin.read(descriptor, buffer.baseAddress, buffer.count)
+            }
+            guard count > 0 else { return }
+            append(Data(bytes.prefix(Int(count))), isStandardError: isStandardError)
+        }
     }
 }
 
