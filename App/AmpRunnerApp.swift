@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AmpRunnerCore
+import Darwin
 
 @main
 struct AmpRunnerApp: App {
@@ -150,6 +151,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let coordinator = RunnerCoordinator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The XCTest host launches the app executable but must not load the user's
+        // profiles or start real runners as a side effect of unit tests.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         guard !Self.terminateIfDuplicateInstance() else { return }
         // Belt and braces: Info.plist sets LSUIElement, but setting the policy here too
         // means a build launched directly from Xcode still behaves as an accessory app.
@@ -169,19 +173,100 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func terminateIfDuplicateInstance() -> Bool {
         guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return false }
 
-        let currentBundleURL = Bundle.main.bundleURL.standardizedFileURL
         let currentProcessID = ProcessInfo.processInfo.processIdentifier
+        let current = InstanceIdentity(
+            bundleIdentifier: bundleIdentifier,
+            bundleURL: Bundle.main.bundleURL,
+            launchDate: NSRunningApplication.current.launchDate,
+            processID: currentProcessID,
+            processStartTime: Self.processStartTime(for: currentProcessID)
+        )
         let olderMatchingInstanceExists = NSWorkspace.shared.runningApplications.contains { application in
-            application.bundleIdentifier == bundleIdentifier
-                && application.bundleURL?.standardizedFileURL == currentBundleURL
-                && application.processIdentifier > 0
-                && application.processIdentifier < currentProcessID
+            let candidate = InstanceIdentity(
+                bundleIdentifier: application.bundleIdentifier,
+                bundleURL: application.bundleURL,
+                launchDate: application.launchDate,
+                processID: application.processIdentifier,
+                processStartTime: Self.processStartTime(for: application.processIdentifier)
+            )
+            return Self.isOlderMatchingInstance(candidate, than: current)
         }
 
         if olderMatchingInstanceExists {
             NSApp.terminate(nil)
         }
         return olderMatchingInstanceExists
+    }
+
+    struct InstanceIdentity {
+        let bundleIdentifier: String?
+        let bundleURL: URL?
+        let launchDate: Date?
+        let processID: pid_t
+        let processStartTime: ProcessStartTime?
+    }
+
+    static func isOlderMatchingInstance(
+        _ candidate: InstanceIdentity,
+        than current: InstanceIdentity
+    ) -> Bool {
+        guard candidate.bundleIdentifier == current.bundleIdentifier else { return false }
+        return wasLaunchedBeforeCurrentProcess(
+            candidateLaunchDate: candidate.launchDate,
+            candidateProcessID: candidate.processID,
+            candidateProcessStartTime: candidate.processStartTime,
+            currentLaunchDate: current.launchDate,
+            currentProcessID: current.processID,
+            currentProcessStartTime: current.processStartTime
+        )
+    }
+
+    static func wasLaunchedBeforeCurrentProcess(
+        candidateLaunchDate: Date?,
+        candidateProcessID: pid_t,
+        candidateProcessStartTime: ProcessStartTime?,
+        currentLaunchDate: Date?,
+        currentProcessID: pid_t,
+        currentProcessStartTime: ProcessStartTime?
+    ) -> Bool {
+        guard candidateProcessID > 0, candidateProcessID != currentProcessID else { return false }
+
+        if let candidateLaunchDate, let currentLaunchDate, candidateLaunchDate != currentLaunchDate {
+            return candidateLaunchDate < currentLaunchDate
+        }
+
+        if let candidateProcessStartTime,
+           let currentProcessStartTime,
+           candidateProcessStartTime != currentProcessStartTime {
+            return candidateProcessStartTime < currentProcessStartTime
+        }
+
+        // Exact or unavailable chronology needs a stable winner so simultaneous launches
+        // cannot both terminate. PID is only a tie-breaker after chronology is exhausted.
+        return candidateProcessID < currentProcessID
+    }
+
+    struct ProcessStartTime: Equatable, Comparable {
+        let seconds: UInt64
+        let microseconds: UInt64
+
+        static func < (lhs: ProcessStartTime, rhs: ProcessStartTime) -> Bool {
+            (lhs.seconds, lhs.microseconds) < (rhs.seconds, rhs.microseconds)
+        }
+    }
+
+    private static func processStartTime(for processID: pid_t) -> ProcessStartTime? {
+        guard processID > 0 else { return nil }
+
+        var processInfo = proc_bsdinfo()
+        let expectedSize = Int32(MemoryLayout<proc_bsdinfo>.stride)
+        guard proc_pidinfo(processID, PROC_PIDTBSDINFO, 0, &processInfo, expectedSize) == expectedSize else {
+            return nil
+        }
+        return ProcessStartTime(
+            seconds: processInfo.pbi_start_tvsec,
+            microseconds: processInfo.pbi_start_tvusec
+        )
     }
 }
 

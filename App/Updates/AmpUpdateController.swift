@@ -5,15 +5,23 @@ import AmpRunnerCore
 
 struct AmpExecutableRegistration: Equatable, Sendable {
     let executableURL: URL
+    let configuredExecutableURL: URL
     let environment: [String: String]
 
     init(
         executableURL: URL,
+        configuredExecutableURL: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.executableURL = executableURL
+        self.configuredExecutableURL = configuredExecutableURL ?? executableURL
         self.environment = environment
     }
+}
+
+struct AmpExecutableUsage: Equatable, Sendable {
+    let runnerCount: Int
+    let alternatePathCount: Int
 }
 
 struct AmpExecutableIdentity: Equatable, Sendable {
@@ -70,6 +78,7 @@ final class AmpUpdateController: ObservableObject {
     @Published private(set) var checkState: AmpUpdateCheckState = .idle
     @Published private(set) var checkError: String?
     @Published private(set) var registeredExecutableURLs: [URL] = []
+    @Published private(set) var registeredExecutableUsage: [String: AmpExecutableUsage] = [:]
     @Published private(set) var installedVersions: [String: AmpVersion] = [:]
     @Published private(set) var probeErrors: [String: String] = [:]
     @Published private(set) var installStates: [String: AmpExecutableInstallState] = [:]
@@ -91,6 +100,8 @@ final class AmpUpdateController: ObservableObject {
     private var probedEnvironments: [String: [String: String]] = [:]
     private var automaticAttempts: [String: AutomaticAttempt] = [:]
     private var installBatchTask: Task<Void, Never>?
+    private var configuredRegistrations: [AmpExecutableRegistration] = []
+    private var appliedRegistrations: [AmpExecutableRegistration] = []
     private var registeredEnvironments: [String: [String: String]] = [:]
     private var registrationGenerations: [String: UInt64] = [:]
     private var nextRegistrationGeneration: UInt64 = 0
@@ -117,6 +128,34 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func synchronizeExecutables(_ registrations: [AmpExecutableRegistration]) {
+        configuredRegistrations = registrations
+        applyRegistrations(registrations)
+    }
+
+    private func refreshResolvedExecutables() {
+        guard !configuredRegistrations.isEmpty else { return }
+        let refreshedRegistrations = configuredRegistrations.map { registration in
+            let configuredURL = registration.configuredExecutableURL.standardizedFileURL
+            let resolvedURL = AmpExecutableResolver.resolveUpdateExecutable(
+                configuredURL: configuredURL,
+                environment: registration.environment
+            )
+            let previousURL = registration.executableURL.standardizedFileURL
+            let executableURL = resolvedURL == configuredURL && previousURL != configuredURL
+                ? previousURL
+                : resolvedURL
+            return AmpExecutableRegistration(
+                executableURL: executableURL,
+                configuredExecutableURL: configuredURL,
+                environment: registration.environment
+            )
+        }
+        guard refreshedRegistrations != appliedRegistrations else { return }
+        applyRegistrations(refreshedRegistrations)
+    }
+
+    private func applyRegistrations(_ registrations: [AmpExecutableRegistration]) {
+        appliedRegistrations = registrations
         let previousEnvironments = registeredEnvironments
         var seen = Set<String>()
         registeredExecutableURLs = registrations.compactMap { registration in
@@ -124,6 +163,18 @@ final class AmpUpdateController: ObservableObject {
             return seen.insert(url.path).inserted ? url : nil
         }
         let paths = Set(registeredExecutableURLs.map(\.path))
+        registeredExecutableUsage = Dictionary(grouping: registrations) {
+            $0.executableURL.standardizedFileURL.path
+        }.mapValues { registrations in
+            let canonicalPath = registrations[0].executableURL.standardizedFileURL.path
+            let alternatePaths = Set(registrations.map {
+                $0.configuredExecutableURL.standardizedFileURL.path
+            }).subtracting([canonicalPath])
+            return AmpExecutableUsage(
+                runnerCount: registrations.count,
+                alternatePathCount: alternatePaths.count
+            )
+        }
         var synchronizedEnvironments: [String: [String: String]] = [:]
         for registration in registrations {
             let path = registration.executableURL.standardizedFileURL.path
@@ -192,6 +243,7 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func checkNow(automatic: Bool = false) async {
+        refreshResolvedExecutables()
         if let checkTask {
             _ = await checkTask.value
             return
@@ -259,7 +311,8 @@ final class AmpUpdateController: ObservableObject {
         for executableURL: URL,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) async -> AmpVersion? {
-        await probeVersion(for: executableURL, environment: environment, force: false)
+        refreshResolvedExecutables()
+        return await probeVersion(for: executableURL, environment: environment, force: false)
     }
 
     private func probeVersion(
@@ -337,6 +390,7 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func installOutdatedExecutables(automatic: Bool = false) async {
+        refreshResolvedExecutables()
         let generation = operationGeneration
         guard let latestVersion else { return }
         if let installBatchTask {

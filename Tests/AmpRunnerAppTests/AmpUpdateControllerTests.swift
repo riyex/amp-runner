@@ -59,6 +59,44 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testHourlyCheckReresolvesConfiguredSymlinkBeforeProbing() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let first = root.appendingPathComponent("amp-1")
+        let second = root.appendingPathComponent("amp-2")
+        let configured = root.appendingPathComponent("amp")
+        XCTAssertTrue(FileManager.default.createFile(atPath: first.path, contents: Data()))
+        XCTAssertTrue(FileManager.default.createFile(atPath: second.path, contents: Data()))
+        try FileManager.default.createSymbolicLink(at: configured, withDestinationURL: first)
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("2.0.0\n".utf8), stderr: Data())
+        ])
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) },
+            readIdentity: { url in
+                AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: url.path)
+            }
+        )
+
+        controller.synchronizeExecutables([
+            .init(executableURL: first, configuredExecutableURL: configured, environment: [:])
+        ])
+        await waitUntil { controller.installedVersions[first.path] == AmpVersion("1.0.0") }
+        try FileManager.default.removeItem(at: configured)
+        try FileManager.default.createSymbolicLink(at: configured, withDestinationURL: second)
+
+        await controller.checkNow()
+        await waitUntil { controller.installedVersions[second.path] == AmpVersion("2.0.0") }
+
+        XCTAssertEqual(controller.registeredExecutableURLs, [second])
+        let requests = await recorder.requests
+        XCTAssertEqual(requests.map(\.executableURL.path), [first.path, second.path])
+    }
+
+    @MainActor
     func testNewReleaseReprobesEvenWhenExecutableIdentityIsUnchanged() async {
         var releases = [Data("2.0.0".utf8), Data("3.0.0".utf8)]
         let recorder = CommandRecorder(results: [
@@ -192,6 +230,38 @@ final class AmpUpdateControllerTests: XCTestCase {
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests.first?.arguments, ["version"])
         XCTAssertEqual(controller.registeredExecutableURLs.count, 1)
+    }
+
+    @MainActor
+    func testRegistrationCoalescesAlternatePathsAndReportsRunnerUsage() async {
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data())
+        ])
+        let controller = AmpUpdateController(
+            executeCommand: { try await recorder.execute($0) },
+            readIdentity: { _ in
+                AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: "same")
+            }
+        )
+        let direct = URL(fileURLWithPath: "/Users/tester/.amp/bin/amp")
+        let wrapper = URL(fileURLWithPath: "/Users/tester/.local/bin/amp")
+
+        controller.synchronizeExecutables([
+            AmpExecutableRegistration(executableURL: direct),
+            AmpExecutableRegistration(executableURL: direct, configuredExecutableURL: wrapper),
+            AmpExecutableRegistration(executableURL: direct, configuredExecutableURL: wrapper),
+            AmpExecutableRegistration(executableURL: direct)
+        ])
+        _ = await controller.installedVersion(for: direct)
+
+        XCTAssertEqual(controller.registeredExecutableURLs, [direct])
+        XCTAssertEqual(
+            controller.registeredExecutableUsage[direct.path],
+            AmpExecutableUsage(runnerCount: 4, alternatePathCount: 1)
+        )
+        let requests = await recorder.requests
+        XCTAssertEqual(requests.map { $0.executableURL.path }, [direct.path])
     }
 
     @MainActor
@@ -707,6 +777,93 @@ private actor SleepRecorder {
 }
 
 final class RunnerCoordinatorUpdateRegistrationTests: XCTestCase {
+    @MainActor
+    func testProfilesUsingAmpWrapperAndDirectBinaryRegisterOneUpdateExecutable() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directExecutable = root.appendingPathComponent(".amp/bin/amp")
+        let wrapper = root.appendingPathComponent(".local/bin/amp")
+        try FileManager.default.createDirectory(
+            at: directExecutable.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: wrapper.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data().write(to: directExecutable)
+        try Data(
+            #"""
+            #!/usr/bin/env bash
+            exec "${AMP_HOME:-$HOME/.amp}/bin/amp" "$@"
+            """#.utf8
+        ).write(to: wrapper)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: directExecutable.path
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: wrapper.path
+        )
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("wrapper-work"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("direct-work"),
+            withIntermediateDirectories: true
+        )
+
+        let store = RunnerProfileStore(
+            fileURL: root.appendingPathComponent("profiles.json"),
+            io: MemoryProfileIO()
+        )
+        try store.save([
+            RunnerProfile(
+                name: "Wrapper", runnerID: "wrapper",
+                workingDirectoryPath: root.appendingPathComponent("wrapper-work").path,
+                ampExecutablePath: wrapper.path
+            ),
+            RunnerProfile(
+                name: "Direct", runnerID: "direct",
+                workingDirectoryPath: root.appendingPathComponent("direct-work").path,
+                ampExecutablePath: directExecutable.path
+            )
+        ])
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data())
+        ])
+        let controller = AmpUpdateController(
+            executeCommand: { try await recorder.execute($0) },
+            readIdentity: { _ in
+                AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: "same")
+            }
+        )
+        let coordinator = RunnerCoordinator(
+            homeDirectoryPath: root.path,
+            store: store,
+            pathSettingsStore: RunnerPathSettingsStore(defaults: defaults, key: "test"),
+            inheritedEnvironment: ["HOME": root.path, "PATH": "/usr/bin"],
+            ampUpdateController: controller
+        )
+
+        coordinator.onLaunch()
+
+        XCTAssertEqual(controller.registeredExecutableURLs.map(\.path), [directExecutable.path])
+        XCTAssertEqual(
+            controller.registeredExecutableUsage[directExecutable.path],
+            AmpExecutableUsage(runnerCount: 2, alternatePathCount: 1)
+        )
+        await waitUntil { controller.installedVersions[directExecutable.path] == AmpVersion("1.0.0") }
+        coordinator.supervisor(for: coordinator.profiles[0]).start()
+        await waitUntil { coordinator.status(for: coordinator.profiles[0]) != .starting }
+        let requests = await recorder.requests
+        XCTAssertEqual(requests.map { $0.executableURL.path }, [directExecutable.path])
+    }
+
     @MainActor
     func testPathSaveInvalidatesOldProbeAndNextCentralProbeUsesResolvedPath() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
