@@ -213,17 +213,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return candidateProcessStartTime < currentProcessStartTime
         }
 
-        let launchDatesMatch = candidateLaunchDate != nil && candidateLaunchDate == currentLaunchDate
-        let processStartTimesMatch = candidateProcessStartTime != nil
-            && candidateProcessStartTime == currentProcessStartTime
-        if launchDatesMatch || processStartTimesMatch {
-            // Exact ties need a stable winner so simultaneous launches cannot terminate each other.
-            return candidateProcessID < currentProcessID
-        }
-
-        // If macOS withholds chronology, conservatively yield to the matching process
-        // that NSWorkspace already reports rather than leave a persistent duplicate.
-        return true
+        // Exact or unavailable chronology needs a stable winner so simultaneous launches
+        // cannot both terminate. PID is only a tie-breaker after chronology is exhausted.
+        return candidateProcessID < currentProcessID
     }
 
     struct ProcessStartTime: Equatable, Comparable {
