@@ -3,6 +3,48 @@ import XCTest
 
 final class AppDelegateDuplicateInstanceTests: XCTestCase {
     @MainActor
+    func testOlderInstanceWithSameBundleIdentifierMatchesAcrossBundleLocations() {
+        let currentLaunchDate = Date()
+        let candidate = AppDelegate.InstanceIdentity(
+            bundleIdentifier: "com.riyex.amprunner",
+            bundleURL: URL(fileURLWithPath: "/Applications/AmpRunner.app"),
+            launchDate: currentLaunchDate.addingTimeInterval(-60),
+            processID: 1_000,
+            processStartTime: nil
+        )
+        let current = AppDelegate.InstanceIdentity(
+            bundleIdentifier: "com.riyex.amprunner",
+            bundleURL: URL(fileURLWithPath: "/tmp/Xcode/AmpRunner.app"),
+            launchDate: currentLaunchDate,
+            processID: 2_000,
+            processStartTime: nil
+        )
+
+        XCTAssertTrue(AppDelegate.isOlderMatchingInstance(candidate, than: current))
+    }
+
+    @MainActor
+    func testDifferentBundleIdentifierDoesNotMatch() {
+        let currentLaunchDate = Date()
+        let candidate = AppDelegate.InstanceIdentity(
+            bundleIdentifier: "com.riyex.amprunner.dev",
+            bundleURL: URL(fileURLWithPath: "/tmp/Xcode/AmpRunner.app"),
+            launchDate: currentLaunchDate.addingTimeInterval(-60),
+            processID: 1_000,
+            processStartTime: nil
+        )
+        let current = AppDelegate.InstanceIdentity(
+            bundleIdentifier: "com.riyex.amprunner",
+            bundleURL: URL(fileURLWithPath: "/Applications/AmpRunner.app"),
+            launchDate: currentLaunchDate,
+            processID: 2_000,
+            processStartTime: nil
+        )
+
+        XCTAssertFalse(AppDelegate.isOlderMatchingInstance(candidate, than: current))
+    }
+
+    @MainActor
     func testNewInstanceDetectsOlderInstanceAfterProcessIDWraparound() {
         let currentLaunchDate = Date()
 

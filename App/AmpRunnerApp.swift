@@ -151,6 +151,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let coordinator = RunnerCoordinator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The XCTest host launches the app executable but must not load the user's
+        // profiles or start real runners as a side effect of unit tests.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         guard !Self.terminateIfDuplicateInstance() else { return }
         // Belt and braces: Info.plist sets LSUIElement, but setting the policy here too
         // means a build launched directly from Xcode still behaves as an accessory app.
@@ -170,27 +173,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func terminateIfDuplicateInstance() -> Bool {
         guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return false }
 
-        let currentBundleURL = Bundle.main.bundleURL.standardizedFileURL
         let currentProcessID = ProcessInfo.processInfo.processIdentifier
-        let currentLaunchDate = NSRunningApplication.current.launchDate
-        let currentProcessStartTime = Self.processStartTime(for: currentProcessID)
+        let current = InstanceIdentity(
+            bundleIdentifier: bundleIdentifier,
+            bundleURL: Bundle.main.bundleURL,
+            launchDate: NSRunningApplication.current.launchDate,
+            processID: currentProcessID,
+            processStartTime: Self.processStartTime(for: currentProcessID)
+        )
         let olderMatchingInstanceExists = NSWorkspace.shared.runningApplications.contains { application in
-            application.bundleIdentifier == bundleIdentifier
-                && application.bundleURL?.standardizedFileURL == currentBundleURL
-                && Self.wasLaunchedBeforeCurrentProcess(
-                    candidateLaunchDate: application.launchDate,
-                    candidateProcessID: application.processIdentifier,
-                    candidateProcessStartTime: Self.processStartTime(for: application.processIdentifier),
-                    currentLaunchDate: currentLaunchDate,
-                    currentProcessID: currentProcessID,
-                    currentProcessStartTime: currentProcessStartTime
-                )
+            let candidate = InstanceIdentity(
+                bundleIdentifier: application.bundleIdentifier,
+                bundleURL: application.bundleURL,
+                launchDate: application.launchDate,
+                processID: application.processIdentifier,
+                processStartTime: Self.processStartTime(for: application.processIdentifier)
+            )
+            return Self.isOlderMatchingInstance(candidate, than: current)
         }
 
         if olderMatchingInstanceExists {
             NSApp.terminate(nil)
         }
         return olderMatchingInstanceExists
+    }
+
+    struct InstanceIdentity {
+        let bundleIdentifier: String?
+        let bundleURL: URL?
+        let launchDate: Date?
+        let processID: pid_t
+        let processStartTime: ProcessStartTime?
+    }
+
+    static func isOlderMatchingInstance(
+        _ candidate: InstanceIdentity,
+        than current: InstanceIdentity
+    ) -> Bool {
+        guard candidate.bundleIdentifier == current.bundleIdentifier else { return false }
+        return wasLaunchedBeforeCurrentProcess(
+            candidateLaunchDate: candidate.launchDate,
+            candidateProcessID: candidate.processID,
+            candidateProcessStartTime: candidate.processStartTime,
+            currentLaunchDate: current.launchDate,
+            currentProcessID: current.processID,
+            currentProcessStartTime: current.processStartTime
+        )
     }
 
     static func wasLaunchedBeforeCurrentProcess(

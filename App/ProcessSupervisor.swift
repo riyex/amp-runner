@@ -66,6 +66,7 @@ final class ProcessSupervisor: ObservableObject {
     private var restartPolicy: RunnerRestartPolicy
     private var isStoppingIntentionally = false
     private var restartPendingAfterTermination = false
+    private var terminalLaunchError: String?
 
     init(
         profile: RunnerProfile,
@@ -165,6 +166,7 @@ final class ProcessSupervisor: ObservableObject {
         guard !isStoppingIntentionally, !isRunning else { return }
         stdoutRemainder = Data()
         stderrRemainder = Data()
+        terminalLaunchError = nil
         logLines.removeAll(keepingCapacity: true)
         activeThread = nil
         activeThreadStartedAt = nil
@@ -403,6 +405,16 @@ final class ProcessSupervisor: ObservableObject {
         let cleaned = line.replacingOccurrences(of: "\r", with: "")
         append(logLine: cleaned)
 
+        if cleaned.localizedCaseInsensitiveContains("another amp process is already serving remote threads for") {
+            terminalLaunchError = cleaned
+            let event = RunnerEvent.statusChanged(.error(cleaned))
+            lastEvent = event
+            setStatus(.error(cleaned))
+            emit(event: event)
+            return
+        }
+        guard terminalLaunchError == nil else { return }
+
         guard let parsedEvent = parser.parse(line: cleaned) else { return }
         lastEvent = parsedEvent
 
@@ -576,6 +588,8 @@ final class ProcessSupervisor: ObservableObject {
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
         flushRemainders()
+        let launchError = terminalLaunchError
+        terminalLaunchError = nil
         stdoutPipe = nil
         stderrPipe = nil
         process = nil
@@ -599,7 +613,10 @@ final class ProcessSupervisor: ObservableObject {
         }
 
         append(logLine: "[amp-runner] \(terminationMessage)")
-        if stoppedIntentionally {
+        if let launchError {
+            restartPolicy.reset()
+            setStatus(.error(launchError))
+        } else if stoppedIntentionally {
             restartPolicy.reset()
             setStatus(.stopped)
         } else if isAbnormalExit {
