@@ -13,7 +13,7 @@ final class RunnerUpdateOrchestrationTests: XCTestCase {
         fixture.snapshots[fixture.second.id] = .init(status: .working, active: true, running: AmpVersion("1.0.0"))
         fixture.load()
         XCTAssertEqual(fixture.updateRequests.count, 1)
-        XCTAssertEqual(fixture.updateRequests.first?.body, "Update 1 Amp installation used by 2 runners.")
+        XCTAssertEqual(fixture.updateRequests.first?.body, "Update available for 2 runners across 1 Amp installation.")
         fixture.coordinator.reevaluateUpdateNotifications()
         XCTAssertEqual(fixture.updateRequests.count, 1)
 
