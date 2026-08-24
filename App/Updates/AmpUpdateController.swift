@@ -100,6 +100,8 @@ final class AmpUpdateController: ObservableObject {
     private var probedEnvironments: [String: [String: String]] = [:]
     private var automaticAttempts: [String: AutomaticAttempt] = [:]
     private var installBatchTask: Task<Void, Never>?
+    private var configuredRegistrations: [AmpExecutableRegistration] = []
+    private var appliedRegistrations: [AmpExecutableRegistration] = []
     private var registeredEnvironments: [String: [String: String]] = [:]
     private var registrationGenerations: [String: UInt64] = [:]
     private var nextRegistrationGeneration: UInt64 = 0
@@ -126,6 +128,34 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func synchronizeExecutables(_ registrations: [AmpExecutableRegistration]) {
+        configuredRegistrations = registrations
+        applyRegistrations(registrations)
+    }
+
+    private func refreshResolvedExecutables() {
+        guard !configuredRegistrations.isEmpty else { return }
+        let refreshedRegistrations = configuredRegistrations.map { registration in
+            let configuredURL = registration.configuredExecutableURL.standardizedFileURL
+            let resolvedURL = AmpExecutableResolver.resolveUpdateExecutable(
+                configuredURL: configuredURL,
+                environment: registration.environment
+            )
+            let previousURL = registration.executableURL.standardizedFileURL
+            let executableURL = resolvedURL == configuredURL && previousURL != configuredURL
+                ? previousURL
+                : resolvedURL
+            return AmpExecutableRegistration(
+                executableURL: executableURL,
+                configuredExecutableURL: configuredURL,
+                environment: registration.environment
+            )
+        }
+        guard refreshedRegistrations != appliedRegistrations else { return }
+        applyRegistrations(refreshedRegistrations)
+    }
+
+    private func applyRegistrations(_ registrations: [AmpExecutableRegistration]) {
+        appliedRegistrations = registrations
         let previousEnvironments = registeredEnvironments
         var seen = Set<String>()
         registeredExecutableURLs = registrations.compactMap { registration in
@@ -213,6 +243,7 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func checkNow(automatic: Bool = false) async {
+        refreshResolvedExecutables()
         if let checkTask {
             _ = await checkTask.value
             return
@@ -280,7 +311,8 @@ final class AmpUpdateController: ObservableObject {
         for executableURL: URL,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) async -> AmpVersion? {
-        await probeVersion(for: executableURL, environment: environment, force: false)
+        refreshResolvedExecutables()
+        return await probeVersion(for: executableURL, environment: environment, force: false)
     }
 
     private func probeVersion(
@@ -358,6 +390,7 @@ final class AmpUpdateController: ObservableObject {
     }
 
     func installOutdatedExecutables(automatic: Bool = false) async {
+        refreshResolvedExecutables()
         let generation = operationGeneration
         guard let latestVersion else { return }
         if let installBatchTask {

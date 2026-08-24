@@ -59,6 +59,44 @@ final class AmpUpdateControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testHourlyCheckReresolvesConfiguredSymlinkBeforeProbing() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let first = root.appendingPathComponent("amp-1")
+        let second = root.appendingPathComponent("amp-2")
+        let configured = root.appendingPathComponent("amp")
+        XCTAssertTrue(FileManager.default.createFile(atPath: first.path, contents: Data()))
+        XCTAssertTrue(FileManager.default.createFile(atPath: second.path, contents: Data()))
+        try FileManager.default.createSymbolicLink(at: configured, withDestinationURL: first)
+        let recorder = CommandRecorder(results: [
+            AmpCommandResult(exitCode: 0, stdout: Data("1.0.0\n".utf8), stderr: Data()),
+            AmpCommandResult(exitCode: 0, stdout: Data("2.0.0\n".utf8), stderr: Data())
+        ])
+        let controller = AmpUpdateController(
+            fetchRelease: { _ in Data("2.0.0".utf8) },
+            executeCommand: { try await recorder.execute($0) },
+            readIdentity: { url in
+                AmpExecutableIdentity(modificationDate: nil, fileSize: 1, fileIdentifier: url.path)
+            }
+        )
+
+        controller.synchronizeExecutables([
+            .init(executableURL: first, configuredExecutableURL: configured, environment: [:])
+        ])
+        await waitUntil { controller.installedVersions[first.path] == AmpVersion("1.0.0") }
+        try FileManager.default.removeItem(at: configured)
+        try FileManager.default.createSymbolicLink(at: configured, withDestinationURL: second)
+
+        await controller.checkNow()
+        await waitUntil { controller.installedVersions[second.path] == AmpVersion("2.0.0") }
+
+        XCTAssertEqual(controller.registeredExecutableURLs, [second])
+        let requests = await recorder.requests
+        XCTAssertEqual(requests.map(\.executableURL.path), [first.path, second.path])
+    }
+
+    @MainActor
     func testNewReleaseReprobesEvenWhenExecutableIdentityIsUnchanged() async {
         var releases = [Data("2.0.0".utf8), Data("3.0.0".utf8)]
         let recorder = CommandRecorder(results: [

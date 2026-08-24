@@ -49,14 +49,24 @@ final class AppDelegateDuplicateInstanceTests: XCTestCase {
     }
 
     @MainActor
-    func testMissingChronologyStillRejectsMatchingProcessAfterProcessIDWraparound() {
-        XCTAssertTrue(
+    func testMissingChronologyUsesProcessIDAsDeterministicTieBreaker() {
+        XCTAssertFalse(
             AppDelegate.wasLaunchedBeforeCurrentProcess(
                 candidateLaunchDate: nil,
                 candidateProcessID: 99_680,
                 candidateProcessStartTime: nil,
                 currentLaunchDate: nil,
                 currentProcessID: 5_249,
+                currentProcessStartTime: nil
+            )
+        )
+        XCTAssertTrue(
+            AppDelegate.wasLaunchedBeforeCurrentProcess(
+                candidateLaunchDate: nil,
+                candidateProcessID: 5_249,
+                candidateProcessStartTime: nil,
+                currentLaunchDate: nil,
+                currentProcessID: 99_680,
                 currentProcessStartTime: nil
             )
         )
