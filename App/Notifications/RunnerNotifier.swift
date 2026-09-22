@@ -22,6 +22,7 @@ enum RunnerUpdateNotificationContentAction: Equatable {
 }
 
 struct RunnerUpdateNotificationRequest: Equatable {
+    let identifier: String
     let title: String
     let body: String
     let category: RunnerUpdateNotificationCategory
@@ -29,12 +30,15 @@ struct RunnerUpdateNotificationRequest: Equatable {
 }
 
 enum RunnerUpdateNotificationBuilder {
+    private static let lifecycleIdentifier = "com.riyex.amprunner.notification.updateLifecycle"
+
     static func build(_ event: AmpUpdateNotificationEvent) -> RunnerUpdateNotificationRequest {
         switch event {
         case let .updateAvailable(version, executableCount, runnerCount):
             return RunnerUpdateNotificationRequest(
+                identifier: lifecycleIdentifier,
                 title: "Amp \(version) is available",
-                body: "Update \(executableCount) Amp \(executableCount == 1 ? "installation" : "installations") used by \(runnerCount) \(runnerCount == 1 ? "runner" : "runners").",
+                body: "Update available for \(runnerCount) \(runnerCount == 1 ? "runner" : "runners") across \(executableCount) Amp \(executableCount == 1 ? "installation" : "installations").",
                 category: .updateAvailable,
                 actions: [.installUpdate, .openUpdates]
             )
@@ -43,6 +47,7 @@ enum RunnerUpdateNotificationBuilder {
                 ? "\(idleCount) idle \(idleCount == 1 ? "runner" : "runners") will restart now; \(workingCount) working \(workingCount == 1 ? "runner" : "runners") will restart when idle."
                 : "\(runnerCount) \(runnerCount == 1 ? "runner needs" : "runners need") a restart: \(idleCount) idle, \(workingCount) working."
             return RunnerUpdateNotificationRequest(
+                identifier: lifecycleIdentifier,
                 title: "Restart runners to finish updating Amp",
                 body: body,
                 category: .restartRequired,
@@ -130,13 +135,12 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
            let identity = result.ledger.lastRestartRequiredBatchIdentity {
             defaults.set(identity, forKey: Self.lastRestartRequiredBatchIdentityKey)
         }
-        for event in result.events {
-            let request = RunnerUpdateNotificationBuilder.build(event)
-            if let deliverUpdate {
-                _ = deliverUpdate(request)
-            } else {
-                Task { await post(update: request) }
-            }
+        guard let event = result.events.last else { return }
+        let request = RunnerUpdateNotificationBuilder.build(event)
+        if let deliverUpdate {
+            _ = deliverUpdate(request)
+        } else {
+            Task { await post(update: request) }
         }
     }
 
@@ -244,8 +248,10 @@ final class RunnerNotifier: NSObject, ObservableObject, UNUserNotificationCenter
         } else {
             content.categoryIdentifier = Self.automaticRestartRequiredCategoryID
         }
+        center.removePendingNotificationRequests(withIdentifiers: [request.identifier])
+        center.removeDeliveredNotifications(withIdentifiers: [request.identifier])
         do {
-            try await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+            try await center.add(UNNotificationRequest(identifier: request.identifier, content: content, trigger: nil))
         } catch {
             NSLog("AmpRunner: failed to post update notification: \(error)")
         }
