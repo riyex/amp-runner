@@ -107,6 +107,20 @@ final class ProcessSupervisor: ObservableObject {
         try RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: homeDirectoryPath)
     }
 
+    /// Snapshot the running instance, including settings and environment, so an
+    /// unscheduled profile edit cannot redirect a live directory operation.
+    func directoryRequest(_ operation: RunnerDirectoryCommand.Operation) throws -> AmpCommandRequest {
+        guard isRunning, let runningCommand, let runningEnvironment else {
+            throw NSError(domain: "AmpRunner", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Start this runner before managing its live directories."
+            ])
+        }
+        let command = try RunnerDirectoryCommand.resolve(operation, launch: runningCommand)
+        return AmpCommandRequest(executableURL: command.executableURL, arguments: command.arguments,
+                                 environment: runningEnvironment, timeout: 15, outputLimit: 256 * 1_024,
+                                 workingDirectoryURL: command.workingDirectoryURL)
+    }
+
     // MARK: - Lifecycle
 
     func start() {

@@ -99,6 +99,7 @@ struct MenuBarContentView: View {
 
             Divider()
 
+            Button("Directories…") { open(.runners, draft: .directories(profile.id)) }
             Button("Open Folder in Finder") { coordinator.revealWorkingDirectoryInFinder(profile) }
             Button("Open Folder in Terminal") { coordinator.openWorkingDirectoryInTerminal(profile) }
             if coordinator.threadURLString(for: profile) != nil {

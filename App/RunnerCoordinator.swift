@@ -9,6 +9,7 @@ enum ProfileDraftRequest: Equatable {
     case new
     case edit(UUID)
     case duplicate(UUID)
+    case directories(UUID)
 }
 
 extension Notification.Name {
@@ -354,6 +355,31 @@ final class RunnerCoordinator: ObservableObject {
         return alert
     }
 
+    func runDirectoryCommand(_ operation: RunnerDirectoryCommand.Operation, profileID: UUID) async throws -> String {
+        guard let supervisor = supervisors[profileID] else {
+            throw NSError(domain: "AmpRunner", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Start this runner before managing its live directories."
+            ])
+        }
+        let request = try supervisor.directoryRequest(operation)
+        let result: AmpCommandResult
+        do {
+            result = try await AmpCommandExecutor().execute(request)
+        } catch AmpCommandExecutor.Error.timedOut {
+            throw NSError(domain: "AmpRunner", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Amp did not respond in time. Refresh the directory list before retrying a change."
+            ])
+        }
+        let output = String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        let errorOutput = String(decoding: result.stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result.exitCode == 0 else {
+            throw NSError(domain: "AmpRunner", code: Int(result.exitCode), userInfo: [
+                NSLocalizedDescriptionKey: errorOutput.isEmpty ? (output.isEmpty ? "Amp directory command failed (\(result.exitCode))." : output) : errorOutput
+            ])
+        }
+        return output.isEmpty ? errorOutput : output
+    }
+
     // MARK: - Runner PATH
 
     func savePathDirectories(_ directories: [String]) throws {
@@ -398,8 +424,7 @@ final class RunnerCoordinator: ObservableObject {
         var copy = profile
         copy.id = UUID()
         copy.name = "\(profile.name) copy"
-        copy.runnerID = "\(profile.runnerID)-copy"
-        copy.arguments = RunnerProfile.defaultArguments(runnerID: copy.runnerID)
+        copy.syncRunnerID("\(profile.runnerID)-copy")
         copy.autoStart = false
         copy.confirmBeforeStart = true
         copy.workingDirectoryPath = ""

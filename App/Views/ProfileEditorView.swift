@@ -17,8 +17,6 @@ struct ProfileEditorView: View {
     var onCancel: () -> Void
 
     @State private var validationMessage: String?
-    @State private var argumentsText: String = ""
-    @State private var lastSyncedRunnerID: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -26,15 +24,15 @@ struct ProfileEditorView: View {
                 Section("Identity") {
                     TextField("Name", text: $draft.name)
                     TextField("Runner ID", text: $draft.runnerID)
-                        .onChange(of: draft.runnerID) { _, _ in
-                            syncDefaultArgumentsIfUnmodified()
+                        .onChange(of: draft.runnerID) { _, newValue in
+                            draft.syncRunnerID(newValue)
                         }
-                    Text("Amp identifies a runner by host plus working directory. The runner ID labels it for you and is passed through as --runner-id.")
+                    Text("One runner can serve many repositories and directories. Use a unique runner ID for each process.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                Section("Working Directory") {
+                Section("Launch Directory") {
                     HStack {
                         Text(draft.workingDirectoryPath.isEmpty ? "No folder chosen" : draft.workingDirectoryPath)
                             .font(.system(.body, design: .monospaced))
@@ -44,7 +42,16 @@ struct ProfileEditorView: View {
                         Spacer()
                         Button("Choose…") { chooseWorkingDirectory() }
                     }
-                    Text("Must be chosen explicitly. Each profile needs its own isolated directory — two runners cannot share one.")
+                    Text("Amp remembers live-added directories here and creates new projects beneath this folder. Each runner needs its own launch directory.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                RunnerDirectorySourcesView(draft: $draft, bookmarks: coordinator.bookmarks)
+
+                Section("Amp Environment") {
+                    Toggle("Use Amp Secrets & Env Vars", isOn: $draft.usesAmpEnvironment)
+                    Text("Adds --amp-env. Amp fetches personal, project, and workspace variables for threads, MCP servers, and plugins. This app does not store their values. When off, Amp’s own settings can still enable them.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -57,29 +64,30 @@ struct ProfileEditorView: View {
                     }
                 }
 
-                Section("Arguments") {
-                    TextEditor(text: $argumentsText)
+                DisclosureGroup("Advanced Arguments") {
+                    TextEditor(text: Binding(
+                        get: { Self.formatArguments(draft.arguments) },
+                        set: { draft.arguments = Self.parseArguments($0) }
+                    ))
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 72)
-                        .onChange(of: argumentsText) { _, newValue in
-                            draft.arguments = Self.parseArguments(newValue)
-                        }
                     HStack {
-                        Text("One argument per line.")
+                        Text("One argument per line. Includes the options above.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Reset to Default") {
                             let runnerID = draft.runnerID.trimmingCharacters(in: .whitespacesAndNewlines)
                             draft.arguments = RunnerProfile.defaultArguments(runnerID: runnerID)
-                            argumentsText = Self.formatArguments(draft.arguments)
-                            lastSyncedRunnerID = runnerID
                         }
                         .buttonStyle(.link)
                     }
                 }
 
                 Section("Behaviour") {
+                    Text("Amp runners update themselves. Amp Runner does not check for releases or restart runners to update them.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Toggle("Start this runner automatically when Amp Runner launches", isOn: $draft.autoStart)
                     Toggle("Always show start confirmation", isOn: $draft.confirmBeforeStart)
                     if !draft.confirmBeforeStart {
@@ -98,6 +106,13 @@ struct ProfileEditorView: View {
             }
             .formStyle(.grouped)
 
+            if coordinator.status(for: draft).isRunning {
+                Text("Saved launch settings apply on the next start. Use Directories… for live additions and removals.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+            }
+
             if let validationMessage {
                 Text(validationMessage)
                     .font(.callout)
@@ -115,11 +130,7 @@ struct ProfileEditorView: View {
             }
             .padding()
         }
-        .frame(minWidth: 520, minHeight: 560)
-        .onAppear {
-            argumentsText = Self.formatArguments(draft.arguments)
-            lastSyncedRunnerID = draft.runnerID.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        .frame(minWidth: 600, minHeight: 680)
     }
 
     // MARK: - Actions
@@ -170,19 +181,6 @@ struct ProfileEditorView: View {
         } else {
             validationMessage = "Could not find amp in AMP_HOME, ~/.amp/bin, PATH, Homebrew, ~/.local/bin, ~/bin, or ~/.bin. Install it with: curl -fsSL https://ampcode.com/install.sh | bash"
         }
-    }
-
-    /// Keeps `--runner-id <id>` in step while the user is still using the default
-    /// argument list, and leaves hand-edited lists alone.
-    private func syncDefaultArgumentsIfUnmodified() {
-        let trimmedRunnerID = draft.runnerID.trimmingCharacters(in: .whitespacesAndNewlines)
-        defer { lastSyncedRunnerID = trimmedRunnerID }
-
-        let previousDefaultArguments = RunnerProfile.defaultArguments(runnerID: lastSyncedRunnerID)
-        guard draft.arguments == previousDefaultArguments else { return }
-
-        draft.arguments = RunnerProfile.defaultArguments(runnerID: trimmedRunnerID)
-        argumentsText = Self.formatArguments(draft.arguments)
     }
 
     static func formatArguments(_ arguments: [String]) -> String {

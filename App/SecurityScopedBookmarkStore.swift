@@ -1,6 +1,6 @@
 import Foundation
 
-/// Persists one security-scoped bookmark per profile working directory so folder
+/// Persists security-scoped bookmarks for each profile's selected directories so folder
 /// access chosen in `NSOpenPanel` survives relaunch.
 ///
 /// This is written to work identically whether or not the App Sandbox entitlement is
@@ -16,7 +16,7 @@ final class SecurityScopedBookmarkStore {
 
     /// URLs currently being accessed, so `stopAccessingSecurityScopedResource()` can be
     /// balanced on teardown.
-    private var activeURLs: [UUID: URL] = [:]
+    private var activeURLs: [String: URL] = [:]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -33,7 +33,13 @@ final class SecurityScopedBookmarkStore {
     ///
     /// `.withSecurityScope` is only meaningful for sandboxed apps but is accepted by
     /// `bookmarkData` in both cases, so no conditional compilation is needed.
-    func storeBookmark(for url: URL, profileID: UUID) {
+    func storeBookmark(for url: URL, profileID: UUID, additionalDirectory: Bool = false) {
+        let key = profileID.uuidString + (additionalDirectory ? ":" + url.path : "")
+        storeBookmark(for: url, key: key)
+        _ = startAccessing(key: key)
+    }
+
+    private func storeBookmark(for url: URL, key: String) {
         do {
             let data = try url.bookmarkData(
                 options: [.withSecurityScope],
@@ -41,7 +47,7 @@ final class SecurityScopedBookmarkStore {
                 relativeTo: nil
             )
             var updated = bookmarks
-            updated[profileID.uuidString] = data
+            updated[key] = data
             bookmarks = updated
         } catch {
             // A missing bookmark degrades gracefully: unsandboxed builds still work,
@@ -53,7 +59,9 @@ final class SecurityScopedBookmarkStore {
     func removeBookmark(profileID: UUID) {
         stopAccessing(profileID: profileID)
         var updated = bookmarks
-        updated.removeValue(forKey: profileID.uuidString)
+        for key in updated.keys where belongs(key, to: profileID) {
+            updated.removeValue(forKey: key)
+        }
         bookmarks = updated
     }
 
@@ -63,8 +71,12 @@ final class SecurityScopedBookmarkStore {
     /// resolved URL, or `nil` when there is no usable bookmark.
     @discardableResult
     func startAccessing(profileID: UUID) -> URL? {
-        if let existing = activeURLs[profileID] { return existing }
-        guard let data = bookmarks[profileID.uuidString] else { return nil }
+        startAccessing(key: profileID.uuidString)
+    }
+
+    private func startAccessing(key: String) -> URL? {
+        if let existing = activeURLs[key] { return existing }
+        guard let data = bookmarks[key] else { return nil }
 
         var isStale = false
         let url: URL
@@ -76,16 +88,16 @@ final class SecurityScopedBookmarkStore {
                 bookmarkDataIsStale: &isStale
             )
         } catch {
-            NSLog("AmpRunner: could not resolve bookmark for profile \(profileID): \(error)")
+            NSLog("AmpRunner: could not resolve bookmark \(key): \(error)")
             return nil
         }
 
         // Succeeds trivially outside the sandbox; required inside it.
         guard url.startAccessingSecurityScopedResource() else { return nil }
-        activeURLs[profileID] = url
+        activeURLs[key] = url
 
         if isStale {
-            storeBookmark(for: url, profileID: profileID)
+            storeBookmark(for: url, key: key)
         }
         return url
     }
@@ -93,13 +105,20 @@ final class SecurityScopedBookmarkStore {
     /// Called once on launch for every profile that has a stored bookmark.
     func startAccessingAll(profileIDs: [UUID]) {
         for id in profileIDs {
-            startAccessing(profileID: id)
+            for key in bookmarks.keys where belongs(key, to: id) {
+                _ = startAccessing(key: key)
+            }
         }
     }
 
     func stopAccessing(profileID: UUID) {
-        guard let url = activeURLs.removeValue(forKey: profileID) else { return }
-        url.stopAccessingSecurityScopedResource()
+        for key in activeURLs.keys where belongs(key, to: profileID) {
+            activeURLs.removeValue(forKey: key)?.stopAccessingSecurityScopedResource()
+        }
+    }
+
+    private func belongs(_ key: String, to profileID: UUID) -> Bool {
+        key == profileID.uuidString || key.hasPrefix(profileID.uuidString + ":")
     }
 
     func stopAccessingAll() {

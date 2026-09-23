@@ -9,6 +9,7 @@ struct ProfileListView: View {
     @State private var editingDraft: EditingDraft?
     @State private var errorMessage: String?
     @State private var deletionCandidate: RunnerProfile?
+    @State private var showingDirectories = false
 
     /// A draft plus the folder the picker should start at.
     struct EditingDraft: Identifiable {
@@ -42,23 +43,32 @@ struct ProfileListView: View {
                 Button("Delete") { deletionCandidate = selectedProfile }
                     .disabled(selectedProfile == nil)
                 Spacer()
+                Button("Directories…") {
+                    if let selectedProfile { coordinator.draftRequest = .directories(selectedProfile.id) }
+                }
+                .disabled(selectedProfile == nil)
                 Button("Edit…") { editSelected() }
                     .disabled(selectedProfile == nil)
             }
         }
         .padding()
         .frame(minWidth: 520, minHeight: 360)
-        .sheet(item: $editingDraft) { draft in
-            ProfileEditorView(
-                coordinator: coordinator,
-                draft: draft.profile,
-                suggestedDirectory: draft.suggestedDirectory,
-                onSave: { saved in
-                    save(saved)
-                    editingDraft = nil
-                },
-                onCancel: { editingDraft = nil }
-            )
+        .sheet(item: $editingDraft, onDismiss: { showingDirectories = false }) { draft in
+            if showingDirectories {
+                RunnerDirectoriesView(coordinator: coordinator, profile: draft.profile,
+                                      onEdit: { showingDirectories = false },
+                                      onClose: { editingDraft = nil })
+            } else {
+                ProfileEditorView(
+                    coordinator: coordinator,
+                    draft: draft.profile,
+                    suggestedDirectory: draft.suggestedDirectory,
+                    onSave: { saved in
+                        if save(saved) { editingDraft = nil }
+                    },
+                    onCancel: { editingDraft = nil }
+                )
+            }
         }
         .alert(
             "Delete “\(deletionCandidate?.name ?? "")”?",
@@ -85,7 +95,7 @@ struct ProfileListView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("No runner profiles yet")
                 .font(.headline)
-            Text("A profile supervises one `amp --no-tui` process in one directory of your choosing. Nothing runs until you pick that folder yourself.")
+            Text("Each profile supervises one runner serving any number of directories. Choose a launch folder to discover repositories, or add explicit directories.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button("New Profile") {
@@ -158,13 +168,15 @@ struct ProfileListView: View {
         editingDraft = EditingDraft(profile: coordinator.makeDuplicateDraft(of: selectedProfile))
     }
 
-    private func save(_ profile: RunnerProfile) {
+    private func save(_ profile: RunnerProfile) -> Bool {
         do {
             try coordinator.persist(profile)
             selection = profile.id
             errorMessage = nil
+            return true
         } catch {
             errorMessage = "\(error)"
+            return false
         }
     }
 
@@ -192,6 +204,11 @@ struct ProfileListView: View {
         case .duplicate(let id):
             if let profile = coordinator.profiles.first(where: { $0.id == id }) {
                 editingDraft = EditingDraft(profile: coordinator.makeDuplicateDraft(of: profile))
+            }
+        case .directories(let id):
+            if let profile = coordinator.profiles.first(where: { $0.id == id }) {
+                showingDirectories = true
+                editingDraft = EditingDraft(profile: profile)
             }
         }
         coordinator.draftRequest = .none
