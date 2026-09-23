@@ -3,6 +3,18 @@ import XCTest
 @testable import AmpRunner
 
 final class AmpCommandExecutorTests: XCTestCase {
+    func testDirectoryCommandUsesRunnerWorkingDirectory() async throws {
+        let executable = try makeFixture("#!/bin/sh\n/bin/cat cwd-marker\n")
+        let directory = executable.deletingLastPathComponent()
+        try Data("selected directory".utf8).write(to: directory.appendingPathComponent("cwd-marker"))
+        let result = try await AmpCommandExecutor().execute(AmpCommandRequest(
+            executableURL: executable, arguments: [], environment: [:],
+            timeout: 2, outputLimit: 1_024, workingDirectoryURL: directory
+        ))
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(String(decoding: result.stdout, as: UTF8.self), "selected directory")
+    }
+
     func testExecutesURLDirectlyWithSeparateArgumentsAndEnvironment() async throws {
         let executable = try makeFixture("""
         #!/bin/sh

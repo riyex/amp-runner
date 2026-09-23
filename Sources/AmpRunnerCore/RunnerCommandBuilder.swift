@@ -87,7 +87,11 @@ public enum RunnerCommandBuilder {
             throw RunnerCommandBuilderError.relativeWorkingDirectory(workingDirectoryPath)
         }
 
-        let arguments = profile.arguments
+        let arguments = resolveDirectoryArguments(
+            profile.arguments,
+            workingDirectoryPath: workingDirectoryPath,
+            homeDirectoryPath: homeDirectoryPath
+        )
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
@@ -96,6 +100,57 @@ public enum RunnerCommandBuilder {
             arguments: arguments,
             workingDirectoryURL: URL(fileURLWithPath: workingDirectoryPath, isDirectory: true)
         )
+    }
+
+    private static func resolveDirectoryArguments(
+        _ arguments: [String],
+        workingDirectoryPath: String,
+        homeDirectoryPath: String
+    ) -> [String] {
+        var result: [String] = []
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            if argument.hasPrefix("--discover-dirs=") {
+                let path = String(argument.dropFirst("--discover-dirs=".count))
+                result.append("--discover-dirs=\(resolveDirectoryPath(path, relativeTo: workingDirectoryPath, homeDirectoryPath: homeDirectoryPath))")
+                index += 1
+            } else if argument == "--discover-dirs",
+                      index + 1 < arguments.count,
+                      !arguments[index + 1].hasPrefix("-") {
+                let path = resolveDirectoryPath(arguments[index + 1], relativeTo: workingDirectoryPath, homeDirectoryPath: homeDirectoryPath)
+                result.append("--discover-dirs=\(path)")
+                index += 2
+            } else if argument == "--dir",
+                      index + 1 < arguments.count,
+                      !arguments[index + 1].hasPrefix("-") {
+                result.append("--dir")
+                result.append(resolveDirectoryPath(arguments[index + 1], relativeTo: workingDirectoryPath, homeDirectoryPath: homeDirectoryPath))
+                index += 2
+            } else if argument.hasPrefix("--dir=") {
+                let path = String(argument.dropFirst("--dir=".count))
+                result.append("--dir")
+                result.append(resolveDirectoryPath(path, relativeTo: workingDirectoryPath, homeDirectoryPath: homeDirectoryPath))
+                index += 1
+            } else {
+                result.append(argument)
+                index += 1
+            }
+        }
+        return result
+    }
+
+    private static func resolveDirectoryPath(
+        _ path: String,
+        relativeTo workingDirectoryPath: String,
+        homeDirectoryPath: String
+    ) -> String {
+        let expanded = expand(path: path, homeDirectoryPath: homeDirectoryPath)
+        if expanded.hasPrefix("/") { return expanded }
+        return URL(fileURLWithPath: workingDirectoryPath, isDirectory: true)
+            .appendingPathComponent(expanded)
+            .standardizedFileURL
+            .path
     }
 
     /// A copy-pasteable terminal equivalent for the resolved command, e.g.

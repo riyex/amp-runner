@@ -295,10 +295,6 @@ struct SettingsRootView: View {
                 .tabItem { Label("Environment", systemImage: "terminal") }
                 .tag(SettingsPane.environment)
 
-            UpdateSettingsView(coordinator: coordinator)
-                .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
-                .tag(SettingsPane.updates)
-
             LogViewerView(coordinator: coordinator)
                 .tabItem { Label("Logs", systemImage: "text.alignleft") }
                 .tag(SettingsPane.logs)

@@ -7,6 +7,7 @@ struct AmpCommandRequest: Sendable {
     let environment: [String: String]
     let timeout: TimeInterval
     let outputLimit: Int
+    var workingDirectoryURL: URL? = nil
 }
 
 struct AmpCommandResult: Equatable, Sendable {
@@ -27,6 +28,7 @@ struct AmpCommandExecutor: Sendable {
         process.executableURL = request.executableURL
         process.arguments = request.arguments
         process.environment = request.environment
+        process.currentDirectoryURL = request.workingDirectoryURL
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 

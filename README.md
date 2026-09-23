@@ -8,9 +8,9 @@
 Amp Runner is a native macOS menu-bar app that supervises local
 [Amp](https://ampcode.com) runner processes. Amp's headless runner mode
 (`amp --no-tui`) connects back to ampcode.com and waits to accept threads you create
-from the web or your phone, executing them in a local working directory — but it gives
-you no way to see whether your runners are up, and no way to run several of them (one
-per repository) without keeping terminal windows open. Amp Runner is that front end and
+from the web or your phone, executing them across the directories each runner serves.
+Amp Runner lets you supervise one or several runners without keeping terminal windows
+open. It is that front end and
 nothing more: it runs your own `amp` binary as a supervised child process, shows its status in the
 menu bar, and lets you start, stop, and inspect each runner. It does not reimplement,
 wrap, proxy, or modify Amp's protocol, and it can show an equivalent terminal command so
@@ -35,7 +35,7 @@ before publication.
   ```sh
   brew install xcodegen
   ```
-- **The Amp CLI**, installed and logged in:
+- **The Amp CLI, version `0.0.1790103932-g7c3282` or later**, installed and logged in:
   ```sh
   curl -fsSL https://ampcode.com/install.sh | bash
   amp login
@@ -45,6 +45,12 @@ before publication.
   (`/opt/homebrew/bin/amp`, `/usr/local/bin/amp`), and legacy wrapper locations
   (`~/.local/bin/amp`, `~/bin/amp`, `~/.bin/amp`). You can also point a profile at any
   path yourself.
+  At startup, the app checks each configured executable with `--version` (or the
+  detected executable when no profiles exist). Older or unverifiable installations
+  trigger an upgrade warning and cannot start runners. Each start rechecks, so after
+  upgrading in Terminal you can retry without relaunching the app. The minimum is a
+  conservative known-good September 22, 2026 build, not necessarily the first release
+  containing the features. This is a local compatibility check, not release polling.
 - **Remote thread creation enabled** in `~/.config/amp/settings.json`:
   ```json
   { "amp.remoteThreadCreation.enabled": true }
@@ -105,9 +111,13 @@ Linux plumbing, but the project does not currently claim Linux compatibility.
 ## Using it
 
 1. Open the menu-bar icon and choose **New Profile…**.
-2. Give the profile a name and runner ID, then pick its working directory. The folder
+2. Give the profile a name and runner ID, then pick its launch directory. The folder
    picker is the only way to set it — Amp Runner never defaults to a directory you did
-   not choose.
+   not choose. New runners discover Git checkouts beneath that folder by default
+   (`--discover-dirs`). Add more discovery folders or explicit directories (`--dir`),
+   or turn off discovery entirely. Turn off **Serve the launch directory itself** to
+   advertise only your selected directories. Amp still permits requests to its launch
+   directory; this setting is not an access-control boundary.
 3. Start the runner. A confirmation sheet shows the Amp executable path, the full
    argument list, and the resolved working directory before anything is launched. This is
    on by default; "don't ask again" is a per-profile opt-out.
@@ -115,25 +125,30 @@ Linux plumbing, but the project does not currently claim Linux compatibility.
    for work), Working (executing a thread), or Error. Per-profile submenus give you logs,
    Finder/Terminal access, and a copyable equivalent terminal command.
 
-Settings has five panes, in order: **General**, **Runners**, **Environment**, **Updates**,
-and **Logs**. General contains **Start Amp Runner at Login** and the thread lifecycle
-notification choices. Runner rows and profile menus show the Amp version captured for the
-current launch (or the installed version while stopped), plus update-available,
-restart-required, installing, and failure states without changing runner health colors.
+Choose **Directories…** from a runner's menu-bar submenu or Manage Runners to list,
+add, or remove live directories without restarting. Amp persists live additions against
+the launch directory. **Remove Added Directory** only undoes a live addition; it never
+deletes files. Launch-configured directories and discovery roots are edited in the
+profile and apply after restart. To exclude a discovered repository, use
+`--discover-exclude` and its pattern in **Advanced Arguments**. A directory may still be
+served by another source. Directory commands always target the running instance's ID,
+executable, launch directory, settings file, and environment, even if its profile has
+been edited since launch.
 
-The Updates pane checks for Amp releases and manages every distinct configured Amp
-executable centrally. By default, scheduled checks and aggregate update notifications are
-on; automatic installation and automatic idle restart are off. Manual **Check Now** and
-**Install Now** remain available when scheduled checks are off. Amp's headless mode omits
-the interactive CLI update check, so Amp Runner invokes each outdated executable's own
-`update --porcelain` command; it does not download or replace the binary itself.
+**Use Amp Secrets & Env Vars** defaults to on for new runners and adds `--amp-env`.
+Amp fetches the personal, project, and workspace variables; this app does not store
+their values. Turning it off omits the flag, but Amp's own settings can still enable
+the feature. Existing saved profiles keep their previous arguments, without silently
+enabling discovery or cloud variables.
 
-After installation, stopped runners remain stopped. Running outdated runners can be
-restarted individually, queued with **Restart All When Idle**, or restarted immediately
-with **Restart All Now…**. Automatic and queued restarts wait for a runner to be online
-and idle and never interrupt active work. Restart All Now is the explicit exception and
-asks for confirmation when affected runners are working. Update-available and
-restart-required notifications are aggregate rather than one notification per runner.
+Settings has four panes, in order: **General**, **Runners**, **Environment**, and **Logs**.
+General contains **Start Amp Runner at Login** and the thread lifecycle notification
+choices. Amp runners update themselves; Amp Runner does not check for Amp releases,
+install updates, notify about newer releases, or restart runners because an update occurred.
+It only prompts when an installation does not meet the minimum-version requirement or
+cannot be verified.
+Amp's own settings control automatic updates. Homebrew installations still need to be
+updated through Homebrew. See the [runner documentation](https://ampcode.com/docs/cli/runners).
 
 The Settings window has one global **Environment** tab for every profile. Its ordered user
 directories are prepended to the runner `PATH`, followed by the app-inherited `PATH` entries
@@ -150,12 +165,11 @@ Keychain usage for secrets anywhere in the codebase. Atlassian refresh tokens, O
 tokens, and Git/SSH credentials are never touched. Amp Runner persists only its own
 non-secret settings. Profiles are stored as JSON at
 `~/Library/Application Support/AmpRunner/profiles.json`, plus global user-added `PATH`
-directories, update preferences, and notification deduplication ledgers in macOS
-preferences.
+directories and notification preferences in macOS preferences.
 
 Amp Runner does not execute a login shell or source shell startup files, so it does not
-promise complete Terminal-environment parity. It offers no arbitrary environment-variable
-or secrets support. Amp Runner also never runs as root and installs no daemon or privileged
+promise complete Terminal-environment parity. Cloud variables are managed by Amp via
+`--amp-env`, not stored in this app. Amp Runner also never runs as root and installs no daemon or privileged
 helper; everything runs in your logged-in user session.
 
 ## Distribution

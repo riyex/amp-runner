@@ -25,22 +25,112 @@ final class RunnerCommandBuilderTests: XCTestCase {
     func testDefaultArgumentsIncludeRunnerID() {
         XCTAssertEqual(
             RunnerProfile.defaultArguments(runnerID: "sample-runner"),
-            ["--no-tui", "--runner-id", "sample-runner", "--remote-control-terminal"]
+            [
+                "--no-tui", "--runner-id", "sample-runner", "--remote-control-terminal",
+                "--discover-dirs", "--amp-env"
+            ]
         )
     }
 
     func testDefaultArgumentsOmitRunnerIDFlagWhenIDIsBlank() {
         XCTAssertEqual(
             RunnerProfile.defaultArguments(runnerID: "   "),
-            ["--no-tui", "--remote-control-terminal"]
+            ["--no-tui", "--remote-control-terminal", "--discover-dirs", "--amp-env"]
         )
     }
 
     func testProfileSeedsDefaultArgumentsWhenNoneProvided() {
         XCTAssertEqual(
             makeProfile().arguments,
-            ["--no-tui", "--runner-id", "sample-runner", "--remote-control-terminal"]
+            [
+                "--no-tui", "--runner-id", "sample-runner", "--remote-control-terminal",
+                "--discover-dirs", "--amp-env"
+            ]
         )
+    }
+
+    func testDirectoryControlsParseMixedEqualsAndSpaceForms() {
+        let profile = makeProfile(arguments: [
+            "--custom", "value",
+            "--discover-dirs", "--discover-dirs=../shared files", "--discover-dirs", "~/src/other",
+            "--dir", "explicit one", "--dir=../explicit-two",
+            "--amp-env", "--no-serve-cwd"
+        ])
+
+        XCTAssertTrue(profile.discoversWorkingDirectory)
+        XCTAssertEqual(profile.discoveryDirectoryPaths, ["../shared files", "~/src/other"])
+        XCTAssertEqual(profile.servedDirectoryPaths, ["explicit one", "../explicit-two"])
+        XCTAssertTrue(profile.usesAmpEnvironment)
+        XCTAssertFalse(profile.servesWorkingDirectory)
+    }
+
+    func testBareDiscoverDirsDoesNotConsumeFollowingFlagOrUnknownValue() {
+        let profile = makeProfile(arguments: ["--discover-dirs", "--custom", "value"])
+        XCTAssertTrue(profile.discoversWorkingDirectory)
+        XCTAssertEqual(profile.discoveryDirectoryPaths, [])
+        XCTAssertEqual(profile.arguments, ["--discover-dirs", "--custom", "value"])
+    }
+
+    func testBareDiscoveryDoesNotTurnShortOptionsIntoDirectoryPaths() throws {
+        var profile = makeProfile(arguments: ["--discover-dirs", "-m", "low"])
+        XCTAssertTrue(profile.discoversWorkingDirectory)
+        XCTAssertEqual(profile.discoveryDirectoryPaths, [])
+        let command = try RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: home)
+        XCTAssertEqual(command.arguments, ["--discover-dirs", "-m", "low"])
+        profile.discoversWorkingDirectory = false
+        XCTAssertEqual(profile.arguments, ["-m", "low"])
+    }
+
+    func testDirectoryControlSettersPreserveUnknownFlagsAndAvoidDuplicates() {
+        var profile = makeProfile(arguments: [
+            "--custom", "keep me", "--discover-dirs", "--discover-dirs=old",
+            "--dir", "old served", "--amp-env", "--amp-env", "--no-serve-cwd"
+        ])
+
+        profile.discoversWorkingDirectory = false
+        profile.discoveryDirectoryPaths = ["one path", "two"]
+        profile.servedDirectoryPaths = ["served path"]
+        profile.usesAmpEnvironment = false
+        profile.servesWorkingDirectory = true
+
+        XCTAssertEqual(profile.arguments, [
+            "--custom", "keep me", "--discover-dirs=one path", "--discover-dirs=two",
+            "--dir", "served path"
+        ])
+        XCTAssertEqual(profile.discoveryDirectoryPaths, ["one path", "two"])
+        XCTAssertEqual(profile.servedDirectoryPaths, ["served path"])
+    }
+
+    func testMalformedManagedFlagsDoNotConsumeUnknownFlags() {
+        var profile = makeProfile(arguments: ["--dir", "--custom", "--runner-id", "--other"])
+
+        profile.servedDirectoryPaths = ["served"]
+        profile.syncRunnerID("new")
+
+        XCTAssertEqual(profile.arguments, [
+            "--dir", "--custom", "--runner-id", "--other", "--dir", "served", "--runner-id", "new"
+        ])
+    }
+
+    func testExplicitOnlyDirectoryConfiguration() {
+        var profile = makeProfile(arguments: ["--discover-dirs", "--amp-env"])
+        profile.discoversWorkingDirectory = false
+        profile.discoveryDirectoryPaths = []
+        profile.servedDirectoryPaths = ["../one", "/tmp/two"]
+
+        XCTAssertFalse(profile.discoversWorkingDirectory)
+        XCTAssertEqual(profile.arguments, ["--amp-env", "--dir", "../one", "--dir", "/tmp/two"])
+    }
+
+    func testSyncRunnerIDPreservesCustomFlagsAndReplacesAllRunnerIDForms() {
+        var profile = makeProfile(arguments: [
+            "--custom", "keep", "--runner-id", "old", "--runner-id=older", "--amp-env"
+        ])
+
+        profile.syncRunnerID("new runner")
+
+        XCTAssertEqual(profile.runnerID, "new runner")
+        XCTAssertEqual(profile.arguments, ["--custom", "keep", "--runner-id", "new runner", "--amp-env"])
     }
 
     // MARK: - Tilde expansion
@@ -85,8 +175,31 @@ final class RunnerCommandBuilderTests: XCTestCase {
         XCTAssertEqual(command.workingDirectoryURL.path, "/Users/tester/src/sample-project")
         XCTAssertEqual(
             command.arguments,
-            ["--no-tui", "--runner-id", "sample-runner", "--remote-control-terminal"]
+            [
+                "--no-tui", "--runner-id", "sample-runner", "--remote-control-terminal",
+                "--discover-dirs", "--amp-env"
+            ]
         )
+    }
+
+    func testResolveDirectoryArgumentsAgainstWorkingDirectoryWithoutSplittingSpaces() throws {
+        let command = try RunnerCommandBuilder.resolve(
+            profile: makeProfile(
+                workingDirectory: "~/My Projects/main",
+                arguments: [
+                    "--discover-dirs=../shared files", "--discover-dirs", "~/other project",
+                    "--dir", "relative served", "--dir=/absolute served"
+                ]
+            ),
+            homeDirectoryPath: home
+        )
+
+        XCTAssertEqual(command.arguments, [
+            "--discover-dirs=/Users/tester/My Projects/shared files",
+            "--discover-dirs=/Users/tester/other project",
+            "--dir", "/Users/tester/My Projects/main/relative served",
+            "--dir", "/absolute served"
+        ])
     }
 
     func testResolveDropsBlankArguments() throws {
@@ -161,7 +274,7 @@ final class RunnerCommandBuilderTests: XCTestCase {
         )
         XCTAssertEqual(
             RunnerCommandBuilder.commandPreview(for: command),
-            "cd /Users/tester/src/sample-project && /opt/homebrew/bin/amp --no-tui --runner-id sample-runner --remote-control-terminal"
+            "cd /Users/tester/src/sample-project && /opt/homebrew/bin/amp --no-tui --runner-id sample-runner --remote-control-terminal --discover-dirs --amp-env"
         )
     }
 
