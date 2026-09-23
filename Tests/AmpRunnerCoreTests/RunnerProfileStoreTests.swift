@@ -76,6 +76,30 @@ final class RunnerProfileStoreTests: XCTestCase {
         XCTAssertEqual(loaded.first?.confirmBeforeStart, false)
     }
 
+    func testLegacyProfileDecodingPreservesArgumentsWithoutAddingNewDefaults() throws {
+        let id = UUID()
+        let json = """
+        [{
+          "id": "\(id.uuidString)",
+          "name": "Legacy",
+          "runnerID": "legacy-runner",
+          "workingDirectoryPath": "/Users/tester/legacy",
+          "ampExecutablePath": "/usr/local/bin/amp",
+          "arguments": ["--no-tui", "--custom", "unchanged"],
+          "autoStart": false,
+          "confirmBeforeStart": true,
+          "createdAt": "2026-01-01T00:00:00Z"
+        }]
+        """
+        let io = InMemoryProfileStoreIO(seed: [fileURL.path: Data(json.utf8)])
+
+        let loaded = try RunnerProfileStore(fileURL: fileURL, io: io).load()
+
+        XCTAssertEqual(loaded.first?.arguments, ["--no-tui", "--custom", "unchanged"])
+        XCTAssertFalse(try XCTUnwrap(loaded.first).discoversWorkingDirectory)
+        XCTAssertFalse(try XCTUnwrap(loaded.first).usesAmpEnvironment)
+    }
+
     func testSavedJSONIsHumanReadableAndContainsNoSecrets() throws {
         let io = InMemoryProfileStoreIO()
         let store = RunnerProfileStore(fileURL: fileURL, io: io)
