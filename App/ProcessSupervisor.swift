@@ -3,7 +3,7 @@ import Combine
 import AmpRunnerCore
 import Darwin
 
-typealias AmpVersionProvider = (ResolvedRunnerCommand, [String: String]) async -> AmpVersion?
+typealias AmpVersionProvider = (ResolvedRunnerCommand, [String: String]) async throws -> AmpVersion?
 typealias TerminationCallbackScheduler = (@escaping @MainActor () -> Void) -> Void
 
 enum SupervisorRestartLifecycle: Equatable {
@@ -152,10 +152,17 @@ final class ProcessSupervisor: ObservableObject {
 
         let versionProvider = versionProvider
         launchTask = Task { @MainActor [weak self] in
-            let version = await versionProvider(command, launchEnvironment)
-            guard let self, !Task.isCancelled else { return }
-            self.launchTask = nil
-            self.launch(command: command, environment: launchEnvironment, version: version)
+            do {
+                let version = try await versionProvider(command, launchEnvironment)
+                guard let self, !Task.isCancelled else { return }
+                self.launchTask = nil
+                self.launch(command: command, environment: launchEnvironment, version: version)
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.launchTask = nil
+                if self.restartLifecycle == .inProgress { self.restartLifecycle = .failed }
+                self.setStatus(.error(error.localizedDescription))
+            }
         }
     }
 

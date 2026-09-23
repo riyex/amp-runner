@@ -7,7 +7,6 @@ enum SettingsPane: Hashable {
     case general
     case runners
     case environment
-    case updates
     case logs
 }
 
@@ -67,7 +66,6 @@ struct MenuBarContentView: View {
 
         Button("Manage Runners…") { open(.runners, draft: .none) }
         Button("Environment…") { open(.environment, draft: .none) }
-        Button(updatesMenuTitle) { open(.updates, draft: .none) }
         Button("Check Amp Settings") { checkAmpSettings() }
 
         Divider()
@@ -87,11 +85,6 @@ struct MenuBarContentView: View {
         let status = coordinator.status(for: profile)
 
         Menu("\(statusGlyph(status))  \(profile.name) — \(status.detailedDescription)") {
-            Text(updateDescription(for: profile))
-            if case .restartRequired = coordinator.updateState(for: profile), status.isRunning {
-                Button("Restart to Update") { coordinator.restartToUpdate(profile) }
-            }
-            Divider()
             if status.isRunning {
                 Button("Stop") { coordinator.stop(profile) }
                 Button("Restart") { coordinator.restart(profile) }
@@ -188,22 +181,6 @@ struct MenuBarContentView: View {
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
             .credits: credits
         ])
-    }
-
-    private var updatesMenuTitle: String {
-        let count = coordinator.restartRequiredRunnerCount
-        return count == 0 ? "Updates…" : "Updates… — \(count) runner\(count == 1 ? "" : "s") need restart"
-    }
-
-    private func updateDescription(for profile: RunnerProfile) -> String {
-        switch coordinator.updateState(for: profile) {
-        case .versionUnknown: return "Amp version unknown"
-        case .upToDate(let version): return "Amp \(version)"
-        case .updateAvailable(_, let latest): return "Update available: \(latest)"
-        case .installing(let installed): return installed.map { "Installing update (Amp \($0))" } ?? "Installing update"
-        case .restartRequired(_, let installed): return "Restart required for \(installed)"
-        case .updateFailed(let installed, _): return installed.map { "Amp \($0) — update failed" } ?? "Amp version unknown — update failed"
-        }
     }
 
     /// Only offer one-click enabling when the file could actually be parsed. A malformed

@@ -15,16 +15,6 @@ extension Notification.Name {
     static let ampRunnerOpenSettingsWindow = Notification.Name("com.riyex.amprunner.openSettingsWindow")
 }
 
-struct RunnerUpdateStateSource {
-    let status: RunnerStatus
-    let hasActiveThread: Bool
-    let runningVersion: AmpVersion?
-    let installedVersion: AmpVersion?
-    let latestVersion: AmpVersion?
-    let installState: AmpExecutableInstallState?
-    let restartLifecycle: SupervisorRestartLifecycle
-}
-
 /// Owns all profiles and their supervisors, and is the single object the UI observes.
 @MainActor
 final class RunnerCoordinator: ObservableObject {
@@ -33,9 +23,6 @@ final class RunnerCoordinator: ObservableObject {
     @Published private(set) var supervisors: [UUID: ProcessSupervisor] = [:]
     @Published private(set) var loadError: String?
     @Published private(set) var pathSettings: RunnerPathSettings
-    @Published private(set) var updatePreferences: AmpUpdatePreferences
-    @Published private(set) var queuedUpdateRestartProfileIDs: Set<UUID> = []
-    @Published private(set) var updateRestartProfileIDsInFlight: Set<UUID> = []
 
     /// Result of inspecting `~/.config/amp/settings.json` at launch.
     @Published private(set) var ampSettingsResult: AmpSettingsChecker.Result = .missingFile
@@ -56,25 +43,17 @@ final class RunnerCoordinator: ObservableObject {
     let notifier: RunnerNotifier
     let launchAtLogin: LaunchAtLoginManager
     let bookmarks: SecurityScopedBookmarkStore
-    let ampUpdateController: AmpUpdateController
 
     private let store: RunnerProfileStore
     private let pathSettingsStore: RunnerPathSettingsStore
-    private let ampUpdatePreferencesStore: AmpUpdatePreferencesStore
     private let homeDirectoryPath: String
     private let inheritedEnvironment: [String: String]
     private var pathSettingsLoadError: String?
     private var profileLoadError: String?
-    private var updatePreferencesLoadError: String?
     private var subscriptions: [UUID: Set<AnyCancellable>] = [:]
-    private var updateControllerSubscription: AnyCancellable?
-    private var updateOrchestrationSubscriptions = Set<AnyCancellable>()
-    private var supervisorRestartReevaluationScheduled = false
-    private let injectedUpdateStateSource: ((RunnerProfile) -> RunnerUpdateStateSource)?
-    private let restartUpdatedRunner: ((UUID) -> Void)?
-    private let applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)?
-    private let saveUpdatePreferencesOverride: ((AmpUpdatePreferences) throws -> Void)?
-    private let installOutdatedExecutables: () -> Void
+    private var startupTask: Task<Void, Never>?
+    private let compatibilityWarningPresenter: ((String) -> Void)?
+    private var presentingCompatibilityWarning = false
 
     struct PendingStart: Identifiable {
         let id: UUID
@@ -90,15 +69,7 @@ final class RunnerCoordinator: ObservableObject {
         notifier: RunnerNotifier? = nil,
         launchAtLogin: LaunchAtLoginManager? = nil,
         bookmarks: SecurityScopedBookmarkStore? = nil,
-        ampUpdateController: AmpUpdateController? = nil,
-        ampUpdatePreferencesStore: AmpUpdatePreferencesStore? = nil,
-        updateStateSource: ((RunnerProfile) -> RunnerUpdateStateSource)? = nil,
-        restartUpdatedRunner: ((UUID) -> Void)? = nil,
-        supervisorChanges: AnyPublisher<Void, Never>? = nil,
-        installCompletions: AnyPublisher<AmpInstallBatch, Never>? = nil,
-        applyUpdatePreferences: ((AmpUpdatePreferences) -> Void)? = nil,
-        saveUpdatePreferences: ((AmpUpdatePreferences) throws -> Void)? = nil,
-        installOutdatedExecutables: (() -> Void)? = nil
+        compatibilityWarningPresenter: ((String) -> Void)? = nil
     ) {
         // Defaults are constructed here, inside the (already @MainActor) initializer body,
         // rather than as parameter default-value expressions. `RunnerNotifier`,
@@ -106,24 +77,13 @@ final class RunnerCoordinator: ObservableObject {
         // @MainActor, and default-value expressions evaluate in a nonisolated context,
         // so constructing them as defaults would be an actor-isolation error.
         self.homeDirectoryPath = homeDirectoryPath
+        self.compatibilityWarningPresenter = compatibilityWarningPresenter
         self.store = store ?? RunnerProfileStore(
             fileURL: RunnerProfileStore.defaultFileURL(homeDirectoryPath: homeDirectoryPath),
             io: FileManagerProfileStoreIO()
         )
         let resolvedPathSettingsStore = pathSettingsStore ?? RunnerPathSettingsStore()
         self.pathSettingsStore = resolvedPathSettingsStore
-        let resolvedPreferencesStore = ampUpdatePreferencesStore ?? AmpUpdatePreferencesStore()
-        self.ampUpdatePreferencesStore = resolvedPreferencesStore
-        do {
-            self.updatePreferences = try resolvedPreferencesStore.load()
-        } catch {
-            self.updatePreferences = AmpUpdatePreferences()
-            self.updatePreferencesLoadError = "Could not read Amp update preferences: \(error.localizedDescription)"
-        }
-        self.injectedUpdateStateSource = updateStateSource
-        self.restartUpdatedRunner = restartUpdatedRunner
-        self.applyUpdatePreferences = applyUpdatePreferences
-        self.saveUpdatePreferencesOverride = saveUpdatePreferences
         self.inheritedEnvironment = inheritedEnvironment
         do {
             self.pathSettings = try resolvedPathSettingsStore.load()
@@ -134,38 +94,7 @@ final class RunnerCoordinator: ObservableObject {
         self.notifier = notifier ?? RunnerNotifier()
         self.launchAtLogin = launchAtLogin ?? LaunchAtLoginManager()
         self.bookmarks = bookmarks ?? SecurityScopedBookmarkStore()
-        let resolvedUpdateController = ampUpdateController ?? AmpUpdateController()
-        self.ampUpdateController = resolvedUpdateController
-        self.installOutdatedExecutables = installOutdatedExecutables ?? {
-            Task { await resolvedUpdateController.installOutdatedExecutables() }
-        }
         recomputeLoadError()
-        updateControllerSubscription = self.ampUpdateController.objectWillChange
-            .sink { [weak self] _ in
-                self?.objectWillChange.send()
-                Task { @MainActor [weak self] in
-                    await Task.yield()
-                    self?.reevaluateUpdateRestarts()
-                    self?.reevaluateUpdateNotifications()
-                }
-            }
-        (supervisorChanges ?? Empty().eraseToAnyPublisher())
-            .sink { [weak self] in
-                self?.reevaluateUpdateRestarts()
-                self?.reevaluateUpdateNotifications()
-            }
-            .store(in: &updateOrchestrationSubscriptions)
-        if let installCompletions {
-            installCompletions
-                .sink { [weak self] batch in self?.handleCompletedInstallBatch(batch) }
-                .store(in: &updateOrchestrationSubscriptions)
-        } else {
-            self.ampUpdateController.$lastCompletedInstallBatch
-                .compactMap { $0 }
-                .sink { [weak self] batch in self?.handleCompletedInstallBatch(batch) }
-                .store(in: &updateOrchestrationSubscriptions)
-        }
-        applyPreferences(updatePreferences)
         self.notifier.actionHandler = { [weak self] action in
             self?.handle(notificationAction: action)
         }
@@ -175,14 +104,19 @@ final class RunnerCoordinator: ObservableObject {
 
     func onLaunch() {
         reload()
-        reevaluateUpdateNotifications()
         bookmarks.startAccessingAll(profileIDs: profiles.map(\.id))
         checkAmpSettings()
-        startAutoStartProfiles()
+        startupTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let blocked = await self.checkStartupCompatibility()
+            guard !Task.isCancelled else { return }
+            self.startAutoStartProfiles(excluding: blocked)
+            self.startupTask = nil
+        }
     }
 
     func onTerminate() {
-        ampUpdateController.cancel()
+        startupTask?.cancel()
         for supervisor in supervisors.values {
             supervisor.stop()
         }
@@ -201,16 +135,15 @@ final class RunnerCoordinator: ObservableObject {
         for profile in profiles {
             supervisor(for: profile).update(profile: profile)
         }
-        synchronizeAmpExecutables()
     }
 
     private func recomputeLoadError() {
-        let errors = [pathSettingsLoadError, profileLoadError, updatePreferencesLoadError].compactMap { $0 }
+        let errors = [pathSettingsLoadError, profileLoadError].compactMap { $0 }
         loadError = errors.isEmpty ? nil : errors.joined(separator: "\n")
     }
 
-    private func startAutoStartProfiles() {
-        for profile in profiles where profile.autoStart {
+    private func startAutoStartProfiles(excluding blocked: Set<UUID>) {
+        for profile in profiles where profile.autoStart && !blocked.contains(profile.id) {
             // Auto-start deliberately bypasses the confirmation sheet: the user already
             // consented to this profile's resolved Amp settings by enabling auto-start.
             supervisor(for: profile).start()
@@ -233,11 +166,14 @@ final class RunnerCoordinator: ObservableObject {
                 self?.runnerEnvironment() ?? fallbackEnvironment
             },
             versionProvider: { [weak self] command, environment in
-                guard let self else { return nil }
-                return await self.ampUpdateController.installedVersion(
-                    for: self.updateExecutableURL(for: command, environment: environment),
-                    environment: environment
-                )
+                do {
+                    return try await AmpCompatibilityChecker.check(command: command, environment: environment)
+                } catch {
+                    if !Task.isCancelled {
+                        self?.presentCompatibilityWarning("\(command.executableURL.path)\n\(error.localizedDescription)")
+                    }
+                    throw error
+                }
             }
         )
         supervisors[profile.id] = supervisor
@@ -267,30 +203,8 @@ final class RunnerCoordinator: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Restart policy depends only on these properties. Each @Published publisher
-        // fires before mutation, so defer reconciliation until the new values are visible.
-        Publishers.MergeMany([
-            supervisor.$status.dropFirst().map { _ in }.eraseToAnyPublisher(),
-            supervisor.$activeThread.dropFirst().map { _ in }.eraseToAnyPublisher(),
-            supervisor.$runningAmpVersion.dropFirst().map { _ in }.eraseToAnyPublisher(),
-            supervisor.$restartLifecycle.dropFirst().map { _ in }.eraseToAnyPublisher()
-        ])
-        .sink { [weak self] in self?.scheduleSupervisorRestartReevaluation() }
-        .store(in: &cancellables)
-
         subscriptions[profileID] = cancellables
         return supervisor
-    }
-
-    private func scheduleSupervisorRestartReevaluation() {
-        guard !supervisorRestartReevaluationScheduled else { return }
-        supervisorRestartReevaluationScheduled = true
-        Task { @MainActor [weak self] in
-            await Task.yield()
-            guard let self else { return }
-            self.supervisorRestartReevaluationScheduled = false
-            self.reevaluateUpdateRestarts()
-        }
     }
 
     private func name(of profileID: UUID) -> String {
@@ -363,9 +277,81 @@ final class RunnerCoordinator: ObservableObject {
     }
 
     func stopAll() {
+        startupTask?.cancel()
         for supervisor in supervisors.values {
             supervisor.stop()
         }
+    }
+
+    // MARK: - Minimum Amp version
+
+    /// Check stopped profiles too, once per configured executable at startup.
+    /// Auto-start is withheld for failures; every later start probes again so a
+    /// manual upgrade or changed executable can recover without relaunching the app.
+    func checkStartupCompatibility() async -> Set<UUID> {
+        guard !Task.isCancelled else { return [] }
+        var candidates = profiles
+        if candidates.isEmpty {
+            if let executable = Self.detectAmpExecutablePath(homeDirectoryPath: homeDirectoryPath,
+                                                             environment: runnerEnvironment()) {
+                candidates = [RunnerProfile(name: "Amp", runnerID: "compatibility-check",
+                    workingDirectoryPath: homeDirectoryPath, ampExecutablePath: executable)]
+            } else {
+                presentCompatibilityWarning("Amp was not found. Install Amp \(AmpRunnerCompatibility.minimumVersion) or later before starting a runner.")
+                return []
+            }
+        }
+        var results: [String: Result<AmpVersion, Error>] = [:]
+        var blocked = Set<UUID>()
+        var failures: [String] = []
+        for profile in candidates {
+            guard !Task.isCancelled else { return blocked }
+            do {
+                let command = try RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: homeDirectoryPath)
+                let path = command.executableURL.path
+                if results[path] == nil {
+                    do {
+                        results[path] = .success(try await AmpCompatibilityChecker.check(command: command, environment: runnerEnvironment()))
+                    } catch {
+                        results[path] = .failure(error)
+                        failures.append("\(path)\n\(error.localizedDescription)")
+                    }
+                }
+                if case .failure = results[path] { blocked.insert(profile.id) }
+            } catch {
+                blocked.insert(profile.id)
+                failures.append("\(profile.name): \(error.localizedDescription)")
+            }
+        }
+        if !Task.isCancelled, !failures.isEmpty {
+            presentCompatibilityWarning(failures.joined(separator: "\n\n"))
+        }
+        return blocked
+    }
+
+    private func presentCompatibilityWarning(_ message: String) {
+        if let compatibilityWarningPresenter {
+            compatibilityWarningPresenter(message)
+            return
+        }
+        guard !presentingCompatibilityWarning else { return }
+        presentingCompatibilityWarning = true
+        defer { presentingCompatibilityWarning = false }
+        let alert = Self.compatibilityAlert(message: message)
+        SettingsWindowOpener.activateApp()
+        if alert.runModal() == .alertFirstButtonReturn {
+            _ = openURLString("https://ampcode.com/docs/cli")
+        }
+    }
+
+    static func compatibilityAlert(message: String) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = "Amp Upgrade Required"
+        alert.informativeText = message + "\n\nAffected runners will not start. Update the listed installation in Terminal using its update command, or use Homebrew for Homebrew installations. Then start the runner again to recheck. Amp Runner never installs updates automatically."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Upgrade Instructions")
+        alert.addButton(withTitle: "Not Now")
+        return alert
     }
 
     // MARK: - Runner PATH
@@ -376,7 +362,6 @@ final class RunnerCoordinator: ObservableObject {
         pathSettings = settings
         pathSettingsLoadError = nil
         recomputeLoadError()
-        synchronizeAmpExecutables()
     }
 
     func resolvedRunnerPath(for directories: [String]? = nil) -> ResolvedRunnerPath {
@@ -404,7 +389,6 @@ final class RunnerCoordinator: ObservableObject {
         try RunnerProfileStore.validateCandidate(profile, against: profiles)
         profiles = try store.upsert(profile, into: profiles)
         supervisor(for: profile).update(profile: profile)
-        synchronizeAmpExecutables()
     }
 
     /// Returns an unsaved copy for the editor. Nothing is persisted until the user picks
@@ -426,285 +410,8 @@ final class RunnerCoordinator: ObservableObject {
         supervisors[profile.id]?.stop()
         supervisors.removeValue(forKey: profile.id)
         subscriptions.removeValue(forKey: profile.id)
-        queuedUpdateRestartProfileIDs.remove(profile.id)
-        updateRestartProfileIDsInFlight.remove(profile.id)
         bookmarks.removeBookmark(profileID: profile.id)
         profiles = try store.delete(id: profile.id, from: profiles)
-        synchronizeAmpExecutables()
-    }
-
-    private func synchronizeAmpExecutables() {
-        let environment = runnerEnvironment()
-        let registrations = profiles.compactMap { profile -> AmpExecutableRegistration? in
-            guard let command = try? RunnerCommandBuilder.resolve(
-                profile: profile,
-                homeDirectoryPath: homeDirectoryPath
-            ) else { return nil }
-            return AmpExecutableRegistration(
-                executableURL: updateExecutableURL(for: command, environment: environment),
-                configuredExecutableURL: command.executableURL,
-                environment: environment
-            )
-        }
-        ampUpdateController.synchronizeExecutables(registrations)
-    }
-
-    // MARK: - Amp updates
-
-    func updateState(for profile: RunnerProfile) -> AmpProfileUpdateState {
-        let source = updateSource(for: profile)
-        let installing: Bool
-        let failure: String?
-        switch source.installState {
-        case .installing:
-            installing = true
-            failure = nil
-        case .failed(let message):
-            installing = false
-            failure = message
-        default:
-            installing = false
-            failure = nil
-        }
-        return AmpProfileUpdateState.derive(
-            status: source.status,
-            runningVersion: source.runningVersion,
-            installedVersion: source.installedVersion,
-            latestVersion: source.latestVersion,
-            installationInProgress: installing,
-            installationFailure: failure
-        )
-    }
-
-    var canInstallAvailableUpdate: Bool {
-        let sources = profiles.map(updateSource(for:))
-        guard !sources.contains(where: { $0.installState == .installing }) else { return false }
-        return sources.contains { source in
-            guard let installed = source.installedVersion, let latest = source.latestVersion else { return false }
-            return installed < latest
-        }
-    }
-
-    func saveUpdatePreferences(_ preferences: AmpUpdatePreferences) throws {
-        if let saveUpdatePreferencesOverride {
-            try saveUpdatePreferencesOverride(preferences)
-        } else {
-            try ampUpdatePreferencesStore.save(preferences)
-        }
-        updatePreferences = preferences
-        updatePreferencesLoadError = nil
-        recomputeLoadError()
-        applyPreferences(preferences)
-        reevaluateUpdateRestarts()
-        reevaluateUpdateNotifications()
-    }
-
-    func installAvailableUpdate() {
-        installOutdatedExecutables()
-    }
-
-    func restartToUpdate(_ profile: RunnerProfile) {
-        let source = updateSource(for: profile)
-        guard source.status.isRunning, requiresRestart(source),
-              !updateRestartProfileIDsInFlight.contains(profile.id) else { return }
-        beginUpdateRestart(profile.id)
-    }
-
-    func restartAllWhenIdle() {
-        queuedUpdateRestartProfileIDs.formUnion(eligibleUpdateRestartProfileIDs())
-        reevaluateUpdateRestarts()
-    }
-
-    /// This operation is invoked only after UI confirmation; unlike queued actions it
-    /// deliberately includes working runners, but never starts a stopped runner.
-    func restartAllNow() {
-        for profile in profiles {
-            let source = updateSource(for: profile)
-            guard source.status.isRunning, requiresRestart(source),
-                  !updateRestartProfileIDsInFlight.contains(profile.id) else { continue }
-            queuedUpdateRestartProfileIDs.remove(profile.id)
-            beginUpdateRestart(profile.id)
-        }
-    }
-
-    var restartRequiredRunnerCount: Int {
-        profiles.reduce(into: 0) { count, profile in
-            let source = updateSource(for: profile)
-            if source.status.isRunning && requiresRestart(source) { count += 1 }
-        }
-    }
-
-    var workingRestartRequiredRunnerCount: Int {
-        profiles.reduce(into: 0) { count, profile in
-            let source = updateSource(for: profile)
-            guard source.status.isRunning, requiresRestart(source) else { return }
-            if case .working = source.status { count += 1 }
-            else if source.hasActiveThread { count += 1 }
-        }
-    }
-
-    private func applyPreferences(_ preferences: AmpUpdatePreferences) {
-        if let applyUpdatePreferences {
-            applyUpdatePreferences(preferences)
-        } else {
-            ampUpdateController.setAutomaticChecksEnabled(preferences.automaticallyChecksForUpdates)
-            ampUpdateController.setAutomaticInstallEnabled(preferences.automaticallyInstallsUpdates)
-        }
-    }
-
-    private func handleCompletedInstallBatch(_ batch: AmpInstallBatch) {
-        reevaluateUpdateNotifications(completedBatch: batch)
-        reevaluateUpdateRestarts()
-    }
-
-    func reevaluateUpdateNotifications(completedBatch: AmpInstallBatch? = nil) {
-        let sources = profiles.map { ($0, updateSource(for: $0)) }
-        let latest = sources.compactMap(\.1.latestVersion).max()
-        let outdatedProfiles = sources.filter { _, source in
-            guard let installed = source.installedVersion, let latest = source.latestVersion else { return false }
-            return installed < latest
-        }
-        let outdatedPaths = Set(outdatedProfiles.compactMap { profile, _ in
-            try? RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: homeDirectoryPath)
-                .executableURL.standardizedFileURL.path
-        })
-        let updatedResults = completedBatch?.results.compactMap { result -> (String, AmpVersion)? in
-            guard case let .updated(version) = result.outcome else { return nil }
-            return (URL(fileURLWithPath: result.path).standardizedFileURL.path, version)
-        } ?? []
-        let updatedPaths = Set(updatedResults.map(\.0))
-        let restartSources = sources.compactMap { profile, source -> RunnerUpdateStateSource? in
-            guard let path = try? RunnerCommandBuilder.resolve(profile: profile, homeDirectoryPath: homeDirectoryPath)
-                .executableURL.standardizedFileURL.path,
-                  updatedPaths.contains(path), requiresRestart(source) else { return nil }
-            switch source.status {
-            case .online, .working: return source
-            default: return nil
-            }
-        }
-        let idleCount = restartSources.filter { source in
-            if case .online = source.status { return !source.hasActiveThread }
-            return false
-        }.count
-        let installedBatchVersion = updatedResults.map(\.1).max()
-        notifier.notifyUpdates(input: AmpUpdateNotificationInput(
-            latestVersion: latest,
-            installedBatchVersion: installedBatchVersion,
-            installedBatchIdentity: completedBatch?.id.uuidString,
-            outdatedExecutableCount: outdatedPaths.count,
-            affectedRunnerCount: outdatedProfiles.count,
-            restartRequiredRunnerCount: restartSources.count,
-            idleRunnerCount: idleCount,
-            workingRunnerCount: restartSources.count - idleCount,
-            automaticallyRestartsWhenIdle: updatePreferences.restartsUpdatedRunnersWhenIdle
-        ), enabled: updatePreferences.sendsUpdateNotifications)
-    }
-
-    private func eligibleUpdateRestartProfileIDs() -> Set<UUID> {
-        Set(profiles.compactMap { profile in
-            let source = updateSource(for: profile)
-            switch source.status {
-            case .online where requiresRestart(source), .working where requiresRestart(source): return profile.id
-            default: return nil
-            }
-        })
-    }
-
-    private func reevaluateUpdateRestarts() {
-        for profile in profiles where updateRestartProfileIDsInFlight.contains(profile.id) {
-            let source = updateSource(for: profile)
-            if case .error = source.status {
-                updateRestartProfileIDsInFlight.remove(profile.id)
-                continue
-            }
-            if source.restartLifecycle == .failed || source.restartLifecycle == .aborted {
-                switch source.status {
-                case .stopped, .error:
-                    updateRestartProfileIDsInFlight.remove(profile.id)
-                case .starting, .online, .working:
-                    break
-                }
-                continue
-            }
-            if source.restartLifecycle == .completed, source.runningVersion == nil {
-                updateRestartProfileIDsInFlight.remove(profile.id)
-                continue
-            }
-            if let running = source.runningVersion, let installed = source.installedVersion,
-               running >= installed {
-                updateRestartProfileIDsInFlight.remove(profile.id)
-            }
-        }
-        let snapshots = profiles.map { profile -> AmpRunnerUpdateSnapshot in
-            let source = updateSource(for: profile)
-            return AmpRunnerUpdateSnapshot(
-                profileID: profile.id,
-                status: source.status,
-                hasActiveThread: source.hasActiveThread,
-                runningVersion: source.runningVersion,
-                installedVersion: source.installedVersion,
-                restartInFlight: updateRestartProfileIDsInFlight.contains(profile.id)
-            )
-        }
-        let decision = AmpIdleRestartPolicy.decide(
-            snapshots: snapshots,
-            enabled: true,
-            queuedProfileIDs: queuedUpdateRestartProfileIDs
-        )
-        if queuedUpdateRestartProfileIDs != decision.keepQueued {
-            queuedUpdateRestartProfileIDs = decision.keepQueued
-        }
-        for id in decision.restartNow { beginUpdateRestart(id) }
-        guard updatePreferences.restartsUpdatedRunnersWhenIdle else { return }
-        for snapshot in snapshots where !snapshot.restartInFlight {
-            guard case .online = snapshot.status, !snapshot.hasActiveThread,
-                  let running = snapshot.runningVersion,
-                  let installed = snapshot.installedVersion,
-                  running < installed else { continue }
-            beginUpdateRestart(snapshot.profileID)
-        }
-    }
-
-    private func beginUpdateRestart(_ profileID: UUID) {
-        guard updateRestartProfileIDsInFlight.insert(profileID).inserted else { return }
-        if let restartUpdatedRunner {
-            restartUpdatedRunner(profileID)
-        } else {
-            supervisors[profileID]?.restart()
-        }
-    }
-
-    private func requiresRestart(_ source: RunnerUpdateStateSource) -> Bool {
-        guard let running = source.runningVersion, let installed = source.installedVersion else { return false }
-        return running < installed
-    }
-
-    private func updateSource(for profile: RunnerProfile) -> RunnerUpdateStateSource {
-        if let injectedUpdateStateSource { return injectedUpdateStateSource(profile) }
-        let supervisor = supervisors[profile.id]
-        let path = (try? RunnerCommandBuilder.resolve(
-            profile: profile,
-            homeDirectoryPath: homeDirectoryPath
-        )).map { updateExecutableURL(for: $0, environment: runnerEnvironment()).path } ?? ""
-        return RunnerUpdateStateSource(
-            status: supervisor?.status ?? .stopped,
-            hasActiveThread: supervisor?.activeThread != nil,
-            runningVersion: supervisor?.runningAmpVersion,
-            installedVersion: ampUpdateController.installedVersions[path],
-            latestVersion: ampUpdateController.latestVersion,
-            installState: ampUpdateController.installStates[path],
-            restartLifecycle: supervisor?.restartLifecycle ?? .none
-        )
-    }
-
-    private func updateExecutableURL(
-        for command: ResolvedRunnerCommand,
-        environment: [String: String]
-    ) -> URL {
-        AmpExecutableResolver.resolveUpdateExecutable(
-            configuredURL: command.executableURL,
-            environment: environment
-        )
     }
 
     /// A blank profile for the editor. The working directory is intentionally empty so
@@ -832,12 +539,6 @@ final class RunnerCoordinator: ObservableObject {
         SettingsWindowOpener.activateApp()
     }
 
-    func openUpdates() {
-        settingsPane = .updates
-        NotificationCenter.default.post(name: .ampRunnerOpenSettingsWindow, object: nil)
-        SettingsWindowOpener.activateApp()
-    }
-
     @discardableResult
     func openURLString(_ urlString: String) -> Bool {
         guard let url = URL(string: urlString) else { return false }
@@ -880,12 +581,6 @@ final class RunnerCoordinator: ObservableObject {
 
         case .viewLogs(let profileID):
             openLogs(profileID: profileID)
-        case .installUpdate:
-            installAvailableUpdate()
-        case .restartAllWhenIdle:
-            restartAllWhenIdle()
-        case .openUpdates:
-            openUpdates()
         }
     }
 }

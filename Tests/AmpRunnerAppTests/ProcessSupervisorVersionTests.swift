@@ -6,6 +6,24 @@ import Darwin
 
 final class ProcessSupervisorVersionTests: XCTestCase {
     @MainActor
+    func testRejectedCompatibilityCheckNeverLaunchesRunner() async throws {
+        let fixture = try SupervisorFixture()
+        let supervisor = ProcessSupervisor(
+            profile: fixture.profile,
+            homeDirectoryPath: fixture.root.path,
+            versionProvider: { _, _ in
+                throw AmpRunnerCompatibility.Error.tooOld(AmpVersion("0.0.1")!)
+            },
+            monitorExecutableURL: fixture.monitorURL
+        )
+        supervisor.start()
+        try await waitUntil { supervisor.status.errorMessage != nil }
+        XCTAssertFalse(supervisor.isRunning)
+        XCTAssertTrue(supervisor.status.errorMessage?.contains("too old") == true)
+        XCTAssertNil(supervisor.runningAmpVersion)
+    }
+
+    @MainActor
     func testStartProbesCapturedCommandAndEnvironmentThenPublishesVersionAfterLaunch() async throws {
         let fixture = try SupervisorFixture()
         var environmentCalls = 0

@@ -117,36 +117,18 @@ struct ProfileListView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                Text(updateDescription(for: profile))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
             Spacer()
             Text(status.detailedDescription)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if status.isRunning {
-                if case .restartRequired = coordinator.updateState(for: profile) {
-                    Button("Restart to Update") { coordinator.restartToUpdate(profile) }
-                }
                 Button("Stop") { coordinator.stop(profile) }
             } else {
                 Button("Start") { coordinator.requestStart(profile) }
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private func updateDescription(for profile: RunnerProfile) -> String {
-        switch coordinator.updateState(for: profile) {
-        case .versionUnknown: return "Amp version unknown"
-        case .upToDate(let version): return "Amp \(version)"
-        case .updateAvailable(_, let latest): return "Update available: \(latest)"
-        case .installing(let installed): return installed.map { "Installing update (Amp \($0))" } ?? "Installing update"
-        case .restartRequired(_, let installed): return "Restart required for \(installed)"
-        case .updateFailed(let installed, _): return installed.map { "Amp \($0) — update failed" } ?? "Amp version unknown — update failed"
-        }
     }
 
     private func color(for status: RunnerStatus) -> Color {
