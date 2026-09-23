@@ -8,7 +8,7 @@ runner mode, where it connects back to ampcode.com and waits to accept and execu
 threads that you create from the web or from your phone, running them in a local working
 directory. What Amp does not give you is a way to see at a glance whether your runners
 are up, to start and stop them without keeping terminal windows open, or to keep several
-of them (one per repository) straight. Amp Runner is that front-end and nothing more — it
+of them straight, each serving multiple directories. Amp Runner is that front-end and nothing more — it
 runs the user's own `amp` binary as a supervised child process, reads its output, and
 shows status. It does not reimplement, wrap, proxy, or modify Amp's protocol, and if Amp
 Runner is quit, everything it supervised can be reproduced by pasting the equivalent
@@ -40,8 +40,6 @@ tests macOS only. Everything that can be decided without a window lives there:
   protocol, including the duplicate-working-directory rule.
 - `RunnerPathSettings` — global ordered user directories and deterministic `PATH`
   resolution.
-- Amp update contracts — version parsing/comparison, persisted preferences, profile-state
-  derivation, and pure aggregate notification/idle-restart policies.
 - `AmpSettingsChecker` — reads and merges `amp.remoteThreadCreation.enabled` from
   settings-file *contents* passed in as `Data`, never from a hardcoded path.
 
@@ -61,8 +59,17 @@ does not alter a running process. That same launch snapshot is passed to the mon
 and Amp, and is retained for Amp metadata subprocesses.
 
 Amp Runner directly launches its processes; it does not execute a login shell or source
-shell startup files. It therefore does not promise complete Terminal-environment parity or
-support arbitrary environment variables or secrets.
+shell startup files. It therefore does not promise complete Terminal-environment parity.
+The per-profile `--amp-env` option delegates cloud Secrets & Env Vars to Amp; the app
+does not fetch or persist those values.
+
+Profiles retain their argument arrays as the source of truth. Directory and environment
+controls edit the corresponding flags while preserving unrelated options; decoding an
+existing profile does not add new defaults. New profiles enable discovery of the chosen
+launch directory and `--amp-env`. Explicit directories and discovery roots can be mixed.
+Live `runner dirs` operations use the supervisor's captured command and environment,
+not a subsequently edited profile. Every operation includes an explicit runner ID and
+retains the launched settings-file override. Amp owns live membership persistence.
 
 The point is testability. Because none of this touches a UI framework, the core and
 monitor-support tests run from SwiftPM on macOS without opening Xcode, and the parts that
@@ -77,26 +84,14 @@ confirmation sheet summarizes the same `ResolvedRunnerCommand` value that is han
 the launcher, so the Amp executable or arguments the user approves cannot drift from what
 is run.
 
-Amp updates use one app-wide `AmpUpdateController`, with one schedule (three seconds after
-launch and then hourly), rather than profile timers, supervisor timers, polling, or file
-watchers. Executable registrations, probes, and installs are keyed by standardized absolute
-path, so profiles sharing an executable share work and state while retaining their own
-captured running versions. All controller and published state is bounded: executable-keyed
-maps and task caches are limited to registered standardized paths, release and notification
-ledgers retain only current identifiers, completed-install state retains one finite batch,
-and command output and displayed errors have fixed caps. The controller fetches the release
-once and invokes executables directly. Amp Runner contains no downloader or checksum
-implementation. Installation uses only `<configured amp> update --porcelain`; that strict
-output contract is the migration boundary and an `updated <version>` result is accepted
-without a post-install version probe.
-
-`ProcessSupervisor` depends only on a generic asynchronous launch-version provider. It
-captures the launch environment once, asks for the version before spawning, and publishes
-that version only for the resulting process. `RunnerCoordinator` is the sole join point for
-controller state, profile state, and supervisor state, and it alone owns aggregate
-notification and idle-restart policy. It subscribes to state changes rather than polling;
-no controller maps are copied into profiles or supervisors. Update failures remain separate
-from runner process health and never alter the aggregate menu-bar health icon.
+Amp owns its update lifecycle. Amp Runner does not poll release endpoints, invoke Amp's
+update command, notify about newer releases, or restart runners after an update. A local
+`--version` check at startup and before each runner launch enforces the conservative
+minimum in `AmpRunnerCompatibility`. Unsupported or unverifiable executables are blocked
+with upgrade guidance; successful checks are not cached across starts, allowing recovery
+after a manual upgrade. Startup checks are deduplicated by configured executable path.
+Supervision otherwise remains limited to ordinary start, stop, user-requested restart,
+crash recovery, process health, and thread lifecycle events.
 
 ## 3. Distribution recommendation
 
@@ -222,10 +217,9 @@ These properties are non-negotiable and are implemented literally.
 3. **No credential storage, ever.** The app persists only its own non-secret
    configuration: profiles as JSON at
    `~/Library/Application Support/AmpRunner/profiles.json`, and global user-added `PATH`
-   directories, four Amp update preferences, and aggregate notification deduplication
-   ledgers in macOS preferences. There is no Keychain usage for secrets anywhere in
+   directories and notification preferences in macOS preferences. There is no Keychain usage for secrets anywhere in
    the codebase. Atlassian refresh tokens, Git/SSH credentials, and OAuth tokens are never
-   read, stored, exported, or logged. Amp Runner does not provide secrets support.
+   read, stored, exported, or logged by the app. Amp handles `--amp-env` itself.
 4. **Never root, never a daemon.** Everything runs in the logged-in user's GUI session.
    There is no privileged helper, no `launchd` daemon, and no `setuid` anything. The
    login-at-start toggle registers exactly one app-level LaunchAgent, via
@@ -233,11 +227,12 @@ These properties are non-negotiable and are implemented literally.
    agents would duplicate runner ownership outside the app's supervision model. The
    app-level LaunchAgent lets `launchd` restart Amp Runner after an unsuccessful exit,
    while the app still starts `autoStart` profiles itself after launching.
-5. **One profile, one isolated directory.** `RunnerProfileStore.validate` rejects any save
+5. **One profile, one launch directory, many served directories.** `RunnerProfileStore.validate` rejects any save
    where two profiles resolve to the same working directory (compared on standardised
    paths, so `/a/b`, `/a/b/`, and `/a/./b` collide) or share a runner ID. This matches
-   Amp's own identity model, where a runner is host plus working directory. Duplicating a
-   profile deliberately clears the copy's directory so the user must choose a new one.
+   Amp's directory persistence, which is tied to the launch directory. Duplicating a
+   profile retains its options but clears its launch directory so the user must choose a
+   new one. Discovery and explicit served directories may overlap between profiles.
 
 One more property worth stating: the app refuses to rewrite
 `~/.config/amp/settings.json` if it cannot parse it. The "Enable Remote Thread Creation"
