@@ -47,6 +47,23 @@ struct ProfileEditorView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                Section("Workspace Sharing") {
+                    Toggle("Share this runner with my workspace", isOn: $draft.sharesWithWorkspace)
+                    Text("Adds --share. Workspace members will see this runner and its served directories on ampcode.com.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if draft.sharesWithWorkspace {
+                        Label {
+                            Text("Workspace members can run code on this Mac as you, read and change your files, and use your credentials and logins. Share only with people you trust.")
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
                 RunnerDirectorySourcesView(draft: $draft, bookmarks: coordinator.bookmarks)
 
                 Section("Amp Environment") {

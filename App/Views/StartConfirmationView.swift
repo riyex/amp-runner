@@ -23,6 +23,24 @@ struct StartConfirmationView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if profile.sharesWithWorkspace {
+                Label {
+                    Text("This runner is shared. Trusted workspace members can run code on this Mac as you, read and change your files, and use your credentials and logins.")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.orange.opacity(0.35))
+                }
+            }
+
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
                     field("Executable", command.executableURL.path)

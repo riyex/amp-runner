@@ -101,6 +101,19 @@ final class RunnerCommandBuilderTests: XCTestCase {
         XCTAssertEqual(profile.servedDirectoryPaths, ["served path"])
     }
 
+    func testWorkspaceSharingPreservesCustomArgumentsAndAvoidsDuplicates() {
+        var profile = makeProfile(arguments: ["--custom", "keep me", "--share", "--amp-env", "--share"])
+
+        XCTAssertTrue(profile.sharesWithWorkspace)
+
+        profile.sharesWithWorkspace = false
+        XCTAssertEqual(profile.arguments, ["--custom", "keep me", "--amp-env"])
+
+        profile.sharesWithWorkspace = true
+        profile.sharesWithWorkspace = true
+        XCTAssertEqual(profile.arguments, ["--custom", "keep me", "--amp-env", "--share"])
+    }
+
     func testMalformedManagedFlagsDoNotConsumeUnknownFlags() {
         var profile = makeProfile(arguments: ["--dir", "--custom", "--runner-id", "--other"])
 

@@ -141,6 +141,12 @@ their values. Turning it off omits the flag, but Amp's own settings can still en
 the feature. Existing saved profiles keep their previous arguments, without silently
 enabling discovery or cloud variables.
 
+**Share this runner with my workspace** adds `--share`, making the runner and its served
+directories available to workspace members on ampcode.com. Their threads run as your
+macOS user and can access your files, credentials, and logins, so enable sharing only for
+people you trust. Sharing remains off by default. The profile editor and start
+confirmation both display this warning when sharing is enabled.
+
 Settings has four panes, in order: **General**, **Runners**, **Environment**, and **Logs**.
 General contains **Start Amp Runner at Login** and the thread lifecycle notification
 choices. Amp runners update themselves; Amp Runner does not check for Amp releases,

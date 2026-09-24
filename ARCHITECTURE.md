@@ -233,6 +233,12 @@ These properties are non-negotiable and are implemented literally.
    Amp's directory persistence, which is tied to the launch directory. Duplicating a
    profile retains its options but clears its launch directory so the user must choose a
    new one. Discovery and explicit served directories may overlap between profiles.
+6. **Workspace sharing is explicit and visible.** `RunnerProfile.sharesWithWorkspace`
+   reflects the `--share` launch argument directly, so profiles configured through the
+   toggle or Advanced Arguments have one source of truth. Sharing remains off by default.
+   When enabled, both the profile editor and start confirmation warn that workspace
+   members execute as the local macOS user with access to that user's files, credentials,
+   and logins.
 
 One more property worth stating: the app refuses to rewrite
 `~/.config/amp/settings.json` if it cannot parse it. The "Enable Remote Thread Creation"
