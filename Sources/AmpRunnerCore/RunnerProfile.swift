@@ -175,6 +175,12 @@ extension RunnerProfile {
         set { arguments = RunnerManagedArguments.settingFlag("--amp-env", enabled: newValue, in: arguments) }
     }
 
+    /// Whether workspace members can create threads that run on this machine.
+    public var sharesWithWorkspace: Bool {
+        get { arguments.contains("--share") }
+        set { arguments = RunnerManagedArguments.settingFlag("--share", enabled: newValue, in: arguments) }
+    }
+
     /// Amp serves the working directory unless `--no-serve-cwd` is present.
     public var servesWorkingDirectory: Bool {
         get { !arguments.contains("--no-serve-cwd") }
