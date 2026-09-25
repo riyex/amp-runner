@@ -1,5 +1,11 @@
 # Amp Runner
 
+> [!IMPORTANT]
+> **This project is archived and no longer maintained.** Amp now includes runner
+> management in its official macOS app, superseding this project. See
+> [The Mac App Is Your Runner](https://ampcode.com/news/the-mac-app-is-your-runner)
+> and the [official runner documentation](https://ampcode.com/docs/macos-and-ios/runner).
+
 [![CI](https://github.com/riyex/amp-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/riyex/amp-runner/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -23,9 +29,8 @@ by, or connected to Sourcegraph, Amp, or AmpCode.
 
 ## Installation status
 
-Amp Runner does not yet have a supported binary release. Build it from source using the
-steps below. Future binaries will be signed with a Developer ID certificate and notarized
-before publication.
+Amp Runner never had a supported binary release. The build instructions below are retained
+for historical reference.
 
 ## Prerequisites
 
